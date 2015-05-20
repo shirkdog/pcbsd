@@ -1,4 +1,4 @@
-<?
+<?php
 defined('DS') OR die('No direct access allowed.');
 
 // Set the error string syscache returns if a particular request
@@ -13,9 +13,9 @@ function hideurl($newurl = "")
      $p = "$newurl";
    ?>
    <script>
-	window.history.pushState('AppWeb', 'AppWeb', '<? echo $p; ?>');
+	window.history.pushState('AppWeb', 'AppWeb', '<?php echo $p; ?>');
    </script>
-   <?
+   <?php
 }
 
 // Runs commands through the sudo dispatcher
@@ -74,7 +74,7 @@ function queueDeleteApp()
    $type = $_GET['deleteAppCmd'];
 
    if ( ! empty($app) and ! empty($type) and ! empty($jail) )
-      run_cmd("queue $type $app delete $jailUrl");
+     run_cmd("queue $type $app delete $jailUrl");
 
    // Now we can remove those values from the URL
    $newUrl=http_build_query($_GET);
@@ -114,7 +114,7 @@ function parse_details($pbiorigin, $jail, $col, $showRemoval=false, $filter=true
   if ( empty($inslist) )
     $inslist = get_installed_list($jail);
 
-  $cmd="pbi app $pbiorigin";
+  /*$cmd="pbi app $pbiorigin";
   exec("$sc ". escapeshellarg("$cmd name")
     . " " . escapeshellarg("pkg $jail local $pbiorigin version") 
     . " " . escapeshellarg("$cmd comment") 
@@ -146,7 +146,26 @@ function parse_details($pbiorigin, $jail, $col, $showRemoval=false, $filter=true
     $pbicomment = $pbiarray[6];
   $pbitype = $pbiarray[7];
   $pbirating = $pbiarray[8];
-
+  */
+  exec("$sc ".escapeshellarg("$jail app-summary $pbiorigin"),$pbiarray);
+  $pbiarray = explode("::::",$pbiarray[0]); //only one line output based on cmd above
+  // Output format (4/7/15): [origin, name, version, iconpath, rating, type, comment, confdir, isInstalled, canRemove]
+  $pbiname = $pbiarray[1];
+  $pbiver = $pbiarray[2];
+  $pbiicon = $pbiarray[3];
+  $pbirating = $pbiarray[4];
+  $pbitype = $pbiarray[5];
+  $pbicomment = $pbiarray[6];
+  $pbicdir = $pbiarray[7];
+  $pbiinstalled = $pbiarray[8];
+  $pbicanremove = $pbiarray[9];
+  if ( empty($pbitype) ) {
+    $isPBI=false;
+    $pkgCmd="pkg";
+  } else {
+    $isPBI=true;
+    $pkgCmd="pbi";
+  }
   // If no match, return false
   if ( empty($pbiname) or $pbiname == "$SCERROR" )
      return 1;
@@ -188,10 +207,24 @@ function parse_details($pbiorigin, $jail, $col, $showRemoval=false, $filter=true
   print("  <td>\n");
 
   // Is this app installed?
-  if ( array_search($pbiorigin, $inslist) !== false )
-   print("    <button title=\"Delete $pbiname\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;float:right;\" onclick=\"delConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\"><img src=\"/images/application-exit.png\" height=22 width=22></button>\n");
-  else
-   print("    <button title=\"Install $pbiname\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;float:right;\" onclick=\"addConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\"><img src=\"/images/install.png\" height=22 width=22></button>\n");
+  //if ( array_search($pbiorigin, $inslist) !== false ) {
+  if ( $pbiinstalled == "true" ){
+    //$output="";
+    //exec("/usr/local/bin/syscache ".escapeshellarg("pkg $jail local $pbiorigin rdependencies"), $output);
+    // Only display the removal option if the app isn't used as a dep on something else
+    //if ( "$output[0]" == "$SCERROR" )
+    if ( $pbicanremove == "true" )
+      print("    <button title=\"Delete $pbiname\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;float:right;\" onclick=\"delConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\"><img src=\"/images/application-exit.png\" height=22 width=22></button>\n");
+  } else {
+   global $pbiindexdir;
+   if ( file_exists("$pbiindexdir/$pbiorigin/LICENSE") ) {
+     // Read the license data
+     $pbilic = file_get_contents("$pbiindexdir/$pbiorigin/LICENSE");
+     print("    <button title=\"Install $pbiname\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;float:right;\" onclick=\"addConfirmLic('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."','".$pbilic."')\"><img src=\"/images/install.png\" height=22 width=22></button>\n");
+   } else {
+     print("    <button title=\"Install $pbiname\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;float:right;\" onclick=\"addConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\"><img src=\"/images/install.png\" height=22 width=22></button>\n");
+   }
+  }
 
   print("    <a href=\"/?p=appinfo&app=".rawurlencode($pbiorigin)."&jail=$jailUrl&allPBI=$allPBI\" title=\"$pbicomment\"><img border=0 align=\"center\" height=48 width=48 src=\"/images/pbiicon.php?i=$pbicdir/icon.png\" style=\"float:left;\"></a>\n");
   print("    <a href=\"/?p=appinfo&app=".rawurlencode($pbiorigin)."&jail=$jailUrl&allPBI=$allPBI\" style=\"margin-left:5px;\">$pbiname</a><br>\n");
@@ -228,13 +261,13 @@ function display_cats($iconsize = "32")
 ?>
 <center>- <b>Categories</b> -</center><br>
 <div class="onoffswitch">
-    <input type="checkbox" name="onoffswitch" class="onoffswitch-checkbox" id="pbiswitch" onclick="togglePBIMode()" <? if ( $allPBI == "false" ) { echo "checked"; }?>>
+    <input type="checkbox" name="onoffswitch" class="onoffswitch-checkbox" id="pbiswitch" onclick="togglePBIMode()" <?php if ( $allPBI == "false" ) { echo "checked"; }?>>
     <label class="onoffswitch-label" for="pbiswitch">
         <span class="onoffswitch-inner"></span>
         <span class="onoffswitch-switch"></span>
     </label>
 </div><br>
-<?
+<?php
 
   if ( $allPBI == "true" )
      $listcmd="pbi list allcats";
@@ -358,7 +391,7 @@ function display_jail_chooser() {
   global $jail;
   global $page;
 
-  echo "<h3>Viewing Apps for:</h3>";
+  echo "<p>Viewing Apps for:</p><br>";
   echo "<form name=\"jailnav\">\n";
   echo "<select name=\"jailSelect\" onChange=\"goto(this.form)\" style=\"height: 80%; width: 175px;\">\n";
 
@@ -418,6 +451,40 @@ function get_default_jail() {
   }
 
   return 1;
+}
+
+function check_update_reboot() {
+  global $sysType;
+
+  // Check if the system is waiting to reboot
+  if ( ($sysType == "DESKTOP" or $sysType == "SERVER") and file_exists("/tmp/.rebootRequired") )
+  {
+     exec("who -b", $wout);
+     exec("cat /tmp/.rebootRequired", $rout);
+     if ( $wout == $rout ) {
+       echo "<center>The system is waiting to reboot from updating, please reboot before installing packages!</center>";
+       exit(0);
+     }
+  }
+
+  // Check if the system is updating
+  if ( file_exists("/tmp/.updateInProgress") )
+  {
+     exec("pgrep -qF /tmp/.updateInProgress ; echo $?", $rout);
+     if ( $rout[0] == "0" ) {
+       exec("tail -20 /var/log/pc-updatemanager.log", $logout);
+       echo "<meta http-equiv=\"refresh\" content=\"4\">";
+       echo "<center>The system is updating, please wait for this to finish before installing packages!</center><br>";
+       echo "<hr>";
+       echo "<pre>";
+       foreach($logout as $line)
+         echo "$line\n";
+       echo "</pre>";
+       exit(0);
+     }
+  }
+
+  return 0;
 }
 
 ?>

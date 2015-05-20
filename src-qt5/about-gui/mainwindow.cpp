@@ -91,7 +91,7 @@ MainWindow::MainWindow(QWidget *parent) :
     if (unameParsed.size()== 4)
     {
         ui->HostnameLabel->setText(unameParsed.at(0));
-        ui->FreeBSDVerLabel->setText(unameParsed.at(1));
+        ui->FreeBSDVerLabel->setText(pcbsd::Utils::runShellCommand("freebsd-version").join(""));
         Arch = unameParsed.at(2);
         ui->ArchLabel->setText(unameParsed.at(2));
         ui->IdentLabel->setText(unameParsed.at(3));
@@ -101,7 +101,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->VersionLabel->setText(PCBSDVERSION);
 
     // Utils version
-    ui->UtilsLabel->setText(pcbsd::Utils::runShellCommand("pkg query '%v' pcbsd-utils-qt4").at(0).section("'", 1, 1));
+    ui->UtilsLabel->setText(pcbsd::Utils::runShellCommand("pkg query '%v' pcbsd-utils-qt5").at(0).section("'", 1, 1));
 
     QString PkgSet="PRODUCTION";
     PkgSet = pcbsd::Utils::getValFromPCBSDConf("PACKAGE_SET");

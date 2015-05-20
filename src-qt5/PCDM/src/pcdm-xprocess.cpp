@@ -12,12 +12,15 @@
 #include <login_cap.h>
 #include <QMessageBox>
 #include <QTemporaryFile>
+#include <QThread>
 
 /*
 Sub-classed QProcess for starting an XSession Process
 */
 
 #include "pcdm-xprocess.h"
+
+#define DEBUG 0
 
 XProcess::XProcess() : QProcess(0) {
   //initialize the variables
@@ -39,7 +42,7 @@ XProcess::~XProcess(){
   this->close();
 }
 
-void XProcess::loginToXSession(QString username, QString password, QString desktop, QString lang){
+void XProcess::loginToXSession(QString username, QString password, QString desktop, QString lang, QString devPassword, bool anon){
   //Setup the variables
   xuser = username;
   xpwd = password;
@@ -48,6 +51,8 @@ void XProcess::loginToXSession(QString username, QString password, QString deskt
   xshell = Backend::getUserShell(xuser);
   xde = desktop;
   xlang = lang;
+  xdevpass = devPassword;
+  xanonlogin = anon;
   //Now start the login process
   if( !startXSession() ){
     //Could not continue after session changed significantly - close down the session to restart
@@ -84,6 +89,19 @@ bool XProcess::startXSession(){
   //Check for PAM username/password validity
   if( !pam_checkPW() ){ emit InvalidLogin(); pam_shutdown(); return true; }
 
+  //If this has a special device password, mount the personacrypt device
+  if( !xanonlogin && !xdevpass.isEmpty() && Backend::getAvailablePersonaCryptUsers().contains(xuser) ){
+    if( !Backend::MountPersonaCryptUser(xuser, xdevpass) ){ 
+      //Could not mount the personacrypt device (invalid password?)
+      xdevpass.clear(); //clear the invalid password
+      emit InvalidLogin(); pam_shutdown(); return true; 
+    }else{
+      //overwrite the password in memory, but leave it flagged (not empty)
+      if(DEBUG){ qDebug() << "Mounted PersonaCrypt Device"; }
+      xdevpass.clear();
+      xdevpass = "PersonaCrypt"; 
+    }
+  }
 
   //Save the current user/desktop as the last login
   Backend::saveLoginInfo(xuser,xde);
@@ -100,17 +118,28 @@ bool XProcess::startXSession(){
       }
   }
 
+  //Emit the last couple logs before dropping privileges
+  Backend::log("Starting session:");
+  Backend::log(" - Session Log: ~/.pcdm-startup.log");
+  //For sanity's sake, ensure that the ZFS mountpoint are all available first
+  if(QFile::exists("/sbin/zfs")){
+    QProcess::execute("zfs mount -a"); //just to ensure the user's home dir is actually mounted
+  }
   //Check/create the user's home-dir before dropping privs
   if(!QFile::exists(xhome)){
+    qDebug() << "No Home dir found - populating...";
     QString hmcmd = "pw usermod "+xuser+" -m";
     QProcess::execute(hmcmd);
+  }
+  //If this is an anonymous login, create the blank home-dir on top
+  if(xanonlogin){
+    if(DEBUG){ qDebug() << " - Stealth Session selected"; }
+    QProcess::execute("personacrypt tempinit "+xuser+" 10G"); //always use 10GB blank dir
   }
   
   // Get the environment before we drop priv
   this->setProcessEnvironment( QProcessEnvironment::systemEnvironment() ); //current environment
-  //Emit the last couple logs before dropping privileges
-  Backend::log("Starting session:");
-  Backend::log(" - Session Log: ~/.pcdm-startup.log");
+
   //Now allow this user access to the Xserver
   QString xhostcmd = "xhost si:localuser:"+xuser;
   QProcess::execute(xhostcmd);
@@ -154,7 +183,7 @@ bool XProcess::startXSession(){
   tFile->setPermissions(QFile::ReadOwner | QFile::WriteOwner |QFile::ReadGroup | QFile::ReadUser | QFile::ReadOther);
   tFile->close();
 
-  Backend::log("Starting session with:\n" + cmd );
+  if(DEBUG){ Backend::log("Starting session with:\n" + cmd ); }
   this->start(cmd);
   return true;
 }
@@ -162,9 +191,26 @@ bool XProcess::startXSession(){
 void XProcess::slotCleanup(){
   Backend::log("Session Finished\n - Return Code: "+ QString::number(this->exitCode()) );
   pam_shutdown(); //make sure that PAM shuts down properly
+  this->closeWriteChannel();
+  this->closeReadChannel(QProcess::StandardOutput);
+  this->closeReadChannel(QProcess::StandardError);
   //Now remove this user's access to the Xserver
   QString xhostcmd = "xhost -si:localuser:"+xuser;
   system(xhostcmd.toUtf8());
+  if(xanonlogin){
+    if(DEBUG){ qDebug() << " - Removing Stealth session"; }
+    QProcess::execute("personacrypt temprem"); //remove the temporary home-dir
+  }else if( !xdevpass.isEmpty() ){
+    if(DEBUG){ Backend::log(" - Unmounting PersonaCrypt User: "+xuser); }
+    int tries = 1;
+    while( !Backend::UnmountPersonaCryptUser(xuser) && tries < 11){ 
+      Backend::log(" WARNING: Could not unmount user device (attempt "+QString::number(tries)+"/10)");
+      tries++;
+      QObject().thread()->usleep(500000); //wait 1/2 second before trying again (max 5 seconds)
+    }
+    if(tries>10){ Backend::log(" ERROR: Could not unmount user device"); }
+    else{ Backend::log(" SUCCESS: User device unmounted"); }
+  }
 }
 
 void XProcess::setupSessionEnvironment(){

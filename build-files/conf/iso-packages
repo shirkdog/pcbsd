@@ -4,7 +4,6 @@ archivers/unrar
 archivers/unzip
 devel/qgit
 editors/libreoffice
-emulators/pipelight
 emulators/i386-wine-devel
 emulators/wine-gecko-devel
 emulators/wine-mono-devel
@@ -37,11 +36,13 @@ misc/pcbsd-meta-virtualboxguest
 misc/pcbsd-meta-vmwareguest
 misc/pcbsd-meta-window_maker
 misc/pcbsd-meta-windowlab
-misc/pcbsd-meta-xbmc
+misc/pcbsd-meta-kodi
 misc/pcbsd-meta-xfce
 misc/pcbsd-role-freenasbuild
 misc/trueos-base
 misc/kde4-l10n
+multimedia/plexhometheater
+multimedia/kodi
 net/krdc
 net-im/pidgin
 ports-mgmt/pkg

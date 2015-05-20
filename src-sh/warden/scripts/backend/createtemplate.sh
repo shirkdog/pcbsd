@@ -30,7 +30,12 @@ download_template_files() {
        do
          get_file_from_mirrors "/${TRUEOSVER}/${FBSDARCH}/dist/$f" "${JDIR}/.download/$f" "iso"
          if [ $? -ne 0 ] ; then
-           exit_err "Failed downloading: /${TRUEOS}/${FBSDARCH}/dist/${f}"
+	   echo "Trying -RELEASE"
+	   TRELEASE="`echo $TRUEOSVER | cut -d '-' -f 1`-RELEASE"
+           get_file_from_mirrors "/${TRELEASE}/${FBSDARCH}/dist/$f" "${JDIR}/.download/$f" "iso"
+           if [ $? -ne 0 ] ; then
+             exit_err "Failed downloading: /${TRUEOS}/${FBSDARCH}/dist/${f}"
+	   fi
          fi
        done
      fi
@@ -44,7 +49,12 @@ download_template_files() {
        if [ $? -ne 0 ] ; then
 	 echo "Trying ftp-archive..."
          fetch -o "${JDIR}/.download/$f" "http://ftp-archive.freebsd.org/pub/FreeBSD-Archive/old-releases/${FBSDARCH}/${FBSDARCH}/${FBSDVER}/$f"
-	 if [ $? -ne 0 ] ; then found=1 ; break; fi
+	 if [ $? -ne 0 ] ; then
+	   echo "Trying -RELEASE..."
+	   FRELEASE="`echo $FBSDVER | cut -d '-' -f 1`-RELEASE"
+           fetch -o "${JDIR}/.download/$f" "http://ftp.freebsd.org/pub/FreeBSD/releases/${FBSDARCH}/${FBSDARCH}/${FRELEASE}/$f"
+	   if [ $? -ne 0 ] ; then found=1 ; break; fi
+	 fi
        fi
      done
 
@@ -145,7 +155,7 @@ if [ -e "${TDIR}" ] ; then
 fi
 
 # Set the files we will be downloading
-DFILES="base.txz doc.txz games.txz"
+DFILES="base.txz doc.txz"
 if [ "$FBSDARCH" = "amd64" ] ; then
   DFILES="$DFILES lib32.txz"
 fi

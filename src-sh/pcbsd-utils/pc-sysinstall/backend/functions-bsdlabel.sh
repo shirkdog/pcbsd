@@ -69,7 +69,10 @@ get_fs_line_xvars()
        do
           echo $i | grep -q '/dev/'
           if [ $? -ne 0 ] ; then
-             ZFSVARS="$ZFSVARS /dev/${i}"
+	     case $i in
+		disk|file|mirror|raidz1|raidz2|raidz3|spare|log|cache) ZFSVARS="$ZFSVARS ${i}" ;;
+		*) ZFSVARS="$ZFSVARS /dev/${i}" ;;
+	     esac
           else
              ZFSVARS="$ZFSVARS $i"
           fi
@@ -117,6 +120,7 @@ setup_zfs_mirror_parts()
 
   ZTYPE="`echo ${1} | awk '{print $1}'`"
 
+  local hitCache=0
   # Using mirroring, setup boot partitions on each disk
   _mirrline="`echo ${1} | sed 's|mirror ||g' | sed 's|raidz1 ||g' | sed 's|raidz2 ||g' | sed 's|raidz3 ||g' | sed 's|raidz ||g'`"
   for _zvars in $_mirrline
@@ -125,6 +129,16 @@ setup_zfs_mirror_parts()
     echo "$_zvars" | grep -q "${2}" 2>/dev/null
     if [ $? -eq 0 ] ; then continue ; fi
     if [ -z "$_zvars" ] ; then continue ; fi
+
+    # If we hit a cache / log device, we can stop doing disk layout setup
+    if [ "$_zvars" = "cache" -o "$_zvars" = "log" -o "$hitCache" = "1" ] ; then
+       # If we have hit a spare device, continue with disk layout setup
+       if [ "$_zvars" != "spare" ] ; then
+          _nZFS="$_nZFS ${_zvars}"
+          hitCache="1"
+          continue
+       fi
+    fi
 
     is_disk "$_zvars" >/dev/null 2>/dev/null
     if [ $? -eq 0 ] ; then
@@ -232,7 +246,13 @@ get_autosize()
   done <${CFGF}
 
   # Pad the size a bit
-  _aSize=`expr $_aSize - 2`
+  _aSize=`expr $_aSize - 5`
+
+  # If installing to UEFI, save 100MB for UEFI partition
+  BOOTMODE=`kenv grub.platform`
+  if [ "$BOOTMODE" = "efi" ]; then
+    _aSize=`expr $_aSize - 100`
+  fi
 
   VAL="$_aSize"
   export VAL
@@ -254,6 +274,20 @@ new_gpart_partitions()
     CURPART="2"
   elif [ "${_pType}" = "apm" ] ; then
     CURPART="3"
+  elif [ "${_pType}" = "freembr" ] ; then
+    # If we are creating a new MBR primary partition, lets do it now
+    CURPART="${_sNum}"
+    PARTLETTER="a"
+    if [ "$CURPART" = "1" ] ; then
+      rc_halt "gpart add -b 2048 -a 4k -t freebsd -i ${CURPART} ${_pDISK}"
+    else
+      rc_halt "gpart add -a 4k -t freebsd -i ${CURPART} ${_pDISK}"
+    fi
+    rc_halt "gpart create -s BSD ${_wSlice}"
+    _pType="mbr"
+  elif [ "${_pType}" = "freegpt" ] ; then
+    CURPART="${_sNum}"
+    _pType="gpt"
   else
     PARTLETTER="a"
     CURPART="1"
@@ -584,12 +618,6 @@ modify_gpart_partitions()
     exit_err "Modification only supports GPT partitions at this time..."
   fi
 
-  # Check if the target disk is using GRUB
-  grep -q "$3" ${TMPDIR}/.grub-install 2>/dev/null
-  if [ $? -ne 0 ] ; then
-    exit_err "GPT Modification only supports GRUB boot-loader at this time..."
-  fi
-
   # Read through config, lets see what partition we are converting over
   while read line
   do
@@ -655,10 +683,7 @@ modify_gpart_partitions()
     # Check if we found a valid root partition
     check_for_mount "${MNT}" "/"
     if [ $? -eq 0 ] ; then
-      export FOUNDROOT="1"
-      if [ "${CURPART}" = "2" ] ; then
-        export FOUNDROOT="0"
-      fi
+      export FOUNDROOT="0"
     fi
 
     # Generate a unique label name for this mount
@@ -684,7 +709,7 @@ modify_gpart_partitions()
 
     # Save this data to our partition config dir
     _dFile="`echo $_pDisk | sed 's|/|-|g'`"
-    echo "${FS}#${MNT}#${ENC}#${PLABEL}#GPT#${XTRAOPTS}" >${PARTDIR}/${_dFile}p${CURPART}
+    echo "${FS}#${MNT}#${ENC}#${PLABEL}#GPT#${XTRAOPTS}" >${PARTDIR}/${_dFile}p${_sNum}
 
     # Clear out any headers
     sleep 2
@@ -692,7 +717,7 @@ modify_gpart_partitions()
 
     # If we have a enc password, save it as well
     if [ -n "${ENCPASS}" ] ; then
-      echo "${ENCPASS}" >${PARTDIR}-enc/${_dFile}p${CURPART}-encpass
+      echo "${ENCPASS}" >${PARTDIR}-enc/${_dFile}p${_sNum}-encpass
     fi
   done <${CFGF}
 };
@@ -717,13 +742,13 @@ populate_disk_label()
   if [ "$mod" = "mod" ] ; then MODONLY="YES"; fi
   
   # Set WRKSLICE based upon format we are using
-  if [ "$type" = "mbr" ] ; then
+  if [ "$type" = "mbr" -o "$type" = "freembr" ] ; then
     wrkslice="${diskid}s${slicenum}"
   fi
   if [ "$type" = "apm" ] ; then
     wrkslice="${diskid}s${slicenum}"
   fi
-  if [ "$type" = "gpt" -o "$type" = "gptslice" ] ; then
+  if [ "$type" = "gpt" -o "$type" = "gptslice" -o "$type" = "freegpt" ] ; then
     wrkslice="${diskid}p${slicenum}"
   fi
 

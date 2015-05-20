@@ -26,6 +26,7 @@
 #include <QGroupBox>
 #include <QListWidget>
 #include <QAbstractItemView>
+#include <QCheckBox>
 
 class LoginWidget : public QGroupBox
 {
@@ -38,7 +39,10 @@ class LoginWidget : public QGroupBox
 	//Get the currently selected items
 	QString currentUsername();
 	QString currentPassword();
+	QString currentDevicePassword();
 	QString currentDE();
+	bool isAnonymous();
+  
 	void setCurrentUser(QString);
 	void setCurrentDE(QString);
 	void setUsernames(QStringList);
@@ -54,25 +58,27 @@ class LoginWidget : public QGroupBox
         void resetFocus(QString item="");
         void allowPasswordView(bool);
 	void allowUserSelection(bool);
+	void allowAnonLogin(bool);
   
   private:
   	QComboBox* listUsers;
 	QComboBox* listDE;
   	QListWidget* listUserBig;
-  	QLineEdit *linePassword, *lineUsername;
+  	QLineEdit *linePassword, *lineDevPassword, *lineUsername;
 	QToolButton* pushLogin;
 	QToolButton* pushViewPassword;
 	QToolButton *pushUserIcon, *userIcon;
-	QLabel* deIcon;
-	
+	QLabel *deIcon, *devIcon, *nousers;
+	QCheckBox *checkAnon;
+	bool updating;
 
 	QStringList idL, desktopIcons, desktopInfo;
 	QSize desktopIconSize;
-        QString hostName;
-	bool userSelected, pwVisible, allowPWVisible, showUsers;
+        QString hostName, loginIcon, loginAnonIcon;
+	bool userSelected, pwVisible, allowPWVisible, showUsers, allowAnon;
 
 	void updateWidget();
-
+  
   private slots:
 	void slotUserActivated();
 	//void slotUserClicked(QListWidgetItem*);
@@ -83,7 +89,8 @@ class LoginWidget : public QGroupBox
   	void slotChooseUser(int);
   	void slotChangePWView();
 	void slotDesktopChanged(int);
-	
+	void slotAnonChanged();
+  
   signals:
 	//Emits these signals whenever a login request is detected
 	void loginRequested(QString user, QString password);

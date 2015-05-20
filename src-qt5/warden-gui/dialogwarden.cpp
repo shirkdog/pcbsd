@@ -42,7 +42,9 @@ void dialogWarden::programInit()
 {  
    // Disable these until we check if the jail is running
    pushTerminal->setEnabled(false);
-   pushPackageManager->setEnabled(false);
+
+   // Remove for now, done by syscache / tray / appcafe
+   pushUpdate->setHidden(true);
 
    // Setup our listview options
    listJails->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -95,8 +97,6 @@ void dialogWarden::programInit()
    connect( pushTerminal, SIGNAL(clicked()), this, SLOT(slotTerminal() ) );
    connect( pushUserAdmin, SIGNAL(clicked()), this, SLOT(slotUserAdmin() ) );
    connect( pushConfigure, SIGNAL(clicked()), this, SLOT(slotPushEditIP() ) );
-   connect( pushPackageManager, SIGNAL(clicked()), this, SLOT(slotPushPackage() ) );
-   connect( pushUpdate, SIGNAL(clicked()), this, SLOT(slotUpdate() ) );
    connect( pushStart, SIGNAL(clicked()), this, SLOT(slotStartJail() ) );
 
    // Snapshot support
@@ -471,13 +471,13 @@ void dialogWarden::slotCheckDetailsReturn()
           size = line;
           continue;
         }
-        if ( line.indexOf("Active Ports: ") == 0 ) {
-          line.replace("Active Ports: ", "");
+        if ( line.indexOf("Active IPv4 Ports: ") == 0 ) {
+          line.replace("Active IPv4 Ports: ", "");
           ports = line;
           continue;
         }
-        if ( line.indexOf("Current Connections: ") == 0 ) {
-          line.replace("Current Connections: ", "");
+        if ( line.indexOf("Current IPv4 Connections: ") == 0 ) {
+          line.replace("Current IPv4 Connections: ", "");
           connections = line;
           continue;
         }
@@ -597,7 +597,6 @@ void dialogWarden::slotCheckStatusReturn()
             if ( listJails->currentItem()) {
               if ( listJails->currentItem()->text(0) == currentStatusWorkingJail ) {
 		if ( running ) {
-		  pushPackageManager->setEnabled(true);
 		  pushTerminal->setEnabled(true);
 		  pushStart->setEnabled(true);
 		  pushStart->setText(tr("&Stop Jail"));
@@ -605,7 +604,6 @@ void dialogWarden::slotCheckStatusReturn()
 		  pushStart->setIconSize(QSize(16,16));
 		  pushStart->setToolTip(tr("Stop the selected jail"));
 		} else {
-		  pushPackageManager->setEnabled(false);
 		  pushTerminal->setEnabled(false);
 		  pushStart->setText(tr("&Start Jail"));
 		  pushStart->setEnabled(true);
@@ -1144,15 +1142,11 @@ void dialogWarden::refreshJailDetailsView()
      // Depending upon the type of jail, we may need to hide stuff
      if ( jailDetails.at(i).at(2) == "Linux Jail" ) {
 	pushServiceGUI->setHidden(true);
-        pushPackageManager->setHidden(true);
 	pushUserAdmin->setHidden(true);
-	pushUpdate->setHidden(true);
 	tabJail->setTabEnabled(3, false);
      } else {
 	pushServiceGUI->setHidden(false);
-        pushPackageManager->setHidden(false);
 	pushUserAdmin->setHidden(false);
-	pushUpdate->setHidden(false);
 	tabJail->setTabEnabled(3, true);
      }
 
@@ -1336,7 +1330,6 @@ void dialogWarden::slotCurrentJailChanged()
    if ( listJails->currentItem()->text(2) == "Running" ) {
      //pushStart->setEnabled(true);
      pushTerminal->setEnabled(true);
-     pushPackageManager->setEnabled(true);
      pushStart->setText(tr("&Stop Jail"));
      pushStart->setIcon(QIcon(":stopjail.png"));
      pushStart->setIconSize(QSize(16,16));
@@ -1345,7 +1338,6 @@ void dialogWarden::slotCurrentJailChanged()
    if ( listJails->currentItem()->text(2) == "Not Running" ) {
      //pushStart->setEnabled(true);
      pushTerminal->setEnabled(false);
-     pushPackageManager->setEnabled(false);
      pushStart->setText(tr("&Start Jail"));
      pushStart->setIcon(QIcon(":running.png"));
      pushStart->setIconSize(QSize(16,16));

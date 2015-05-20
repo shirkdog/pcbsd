@@ -10,8 +10,9 @@ HEADERS	+= MainDaemon.h \
 			
 SOURCES	+= main.cpp \
 		MainDaemon.cpp \
-		Backend.cpp \
-		Backend-remdev.cpp
+		Backend-remdev.cpp \
+		Backend-audio.cpp \
+		Backend-screen.cpp
 
 
 TARGET=pc-sysconfig-daemon
@@ -21,4 +22,4 @@ target.path=/usr/local/bin
 INSTALLS += target
 
 
-QMAKE_LIBDIR = /usr/local/lib/qt4 /usr/local/lib
+QMAKE_LIBDIR = /usr/local/lib/qt5 /usr/local/lib

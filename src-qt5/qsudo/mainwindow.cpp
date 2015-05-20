@@ -70,6 +70,8 @@ void MainWindow::ProgramInit()
   settings->setValue(commText, QString::number(qApp->applicationPid()) );
   settings->sync();
   //qDebug() << "Settings Status:" << settings->status();
+  //Make sure to activate this window (in case the WM does not do it)
+  this->setWindowState( this->windowState() | Qt::WindowActive );
 }
 
 void MainWindow::slotReturnPressed()
@@ -169,9 +171,13 @@ void MainWindow::slotProcDone()
 
 void MainWindow::slotButtonClicked(QAbstractButton *myBut)
 {
-  if ( buttonBox->buttonRole(myBut) == QDialogButtonBox::AcceptRole ) 
+  if ( buttonBox->buttonRole(myBut) == QDialogButtonBox::AcceptRole ) {
      testPass();
-  close();
+     close();
+  }else{
+    QApplication::exit(1);
+  }
+  
 }
 
 bool MainWindow::checkUserGroup()

@@ -9,6 +9,8 @@
 #include <pcbsd-utils.h>
 
 #define UPDATE_LOG_FILE QString("/var/log/pc-updatemanager.log")
+#define UPDATE_LOG_FILE_AUTO QString("/var/log/pc-updatemanager-auto.log")
+#define UPDATE_LOG_FILE_PREVIOUS QString("/var/log/pc-updatemanager.log.prev")
 
 namespace Ui{
 	class MainUI;
@@ -34,6 +36,8 @@ private slots:
 	  this->close();
 	}
 	
+	void watcherChange(QString);
+	
 	void UpdateUI(); //refresh the entire UI , and system status structure
 	// (generally only for initialization or after an update was started/stopped)
 	
@@ -50,5 +54,8 @@ private slots:
 	void autoUpChange(); //auto-update option changed
 
 
+    void on_actionVulnerabilities_triggered();
+    void on_actionExit_triggered();
+    void on_actionBase_updates_history_triggered();
 };
 #endif

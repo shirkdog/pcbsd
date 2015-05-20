@@ -8,6 +8,8 @@
 #include <QApplication>
 #include <QMessageBox>
 #include <QtGui>
+#include <QTextCodec>
+
 #include <QProcessEnvironment>
 #include <pcbsd-SingleApplication.h>
 
@@ -16,7 +18,7 @@
 
 bool DEBUG_MODE;
 QString DEVICEDIR;
-QString MOUNTDIR;
+//QString MOUNTDIR;
 //QString ROOTMOUNTDIR;
 //QString USERNAME;
 
@@ -38,7 +40,7 @@ int  main(int argc, char ** argv)
    
    //Now start the application
    DEVICEDIR = "/dev/";
-   MOUNTDIR = QDir::homePath()+"/Media/";
+   /*MOUNTDIR = QDir::homePath()+"/Media/";
    //ROOTMOUNTDIR = "/media/";
    if(!QFile::exists(MOUNTDIR)){
      QDir dir(MOUNTDIR);
@@ -48,7 +50,7 @@ int  main(int argc, char ** argv)
        qDebug() << " - No way to mount devices: exiting....";
        exit(1);
      }
-   }
+   }*/
    PCSingleApplication a(argc, argv);
    if ( !a.isPrimaryProcess() ){ return 0; }
 
@@ -59,6 +61,7 @@ int  main(int argc, char ** argv)
    translator.load( QString("MountTray_") + langCode, PREFIX + "/share/pcbsd/i18n/" );
    a.installTranslator( &translator );
    qDebug() << "Locale:" << langCode;
+   QTextCodec::setCodecForLocale( QTextCodec::codecForName("UTF-8") ); //Force Utf-8 compliance
    
    MountTray tray;
    QApplication::setQuitOnLastWindowClosed(false);

@@ -17,6 +17,10 @@
 #include <QNetworkReply>
 #include <QMenu>
 #include <QToolButton>
+#include <QFrame>
+#include <QLineEdit>
+#include <QToolButton>
+#include <QShortcut>
 
 #include "configDlg.h"
 #include <pcbsd-utils.h>
@@ -38,7 +42,15 @@ private:
 	QMenu *listMenu;
 	QToolButton *listB;
 	QAction *backA, *forA, *refA, *stopA, *progA;
+	QFrame *group_search;
+	QLineEdit *line_search;
+	QToolButton *tool_search;
+	QString lastsearch;
+	QShortcut *ctrlF, *esc;
 	
+	bool sameUrls(QUrl U1, QUrl U2);
+	bool actionUrl(QUrl U1);
+
 private slots:
 	void slotSingleInstance();
 	void LinkClicked(const QUrl &url);
@@ -56,6 +68,9 @@ private slots:
 	void GoStop();
 	void GoClose();
 	void GoConfigure();
+	void GoSearch();
+	void openSearch();
+	void closeSearch();
 };
 
 #endif

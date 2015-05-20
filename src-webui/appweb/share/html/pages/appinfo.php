@@ -1,4 +1,4 @@
-<?
+<?php
 defined('DS') OR die('No direct access allowed.');
 
 function do_service_action()
@@ -392,11 +392,26 @@ function display_install_chooser()
   global $jail;
   global $pbiInstalled;
   global $pkgCmd;
+  global $SCERROR;
 
-   if ( $pbiInstalled )
-     print("    <button title=\"Delete $pbiname from $jail\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;background-image: url('/images/application-exit.png');background-size: 100%; height: 48px; width: 48px;\" onclick=\"delConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\" height=48 width=48></button>\n");
-  else
-     print("    <button title=\"Install $pbiname into $jail\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;background-image: url('/images/install.png');background-size: 100%; height: 48px; width: 48px;\" onclick=\"addConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\"></button>\n");
+   if ( $pbiInstalled ) {
+     $output="";
+     exec("/usr/local/bin/syscache ".escapeshellarg("pkg $jail local $pbiorigin rdependencies"), $output);
+     // Dont display removal option unless app is not required by others
+     if ( "$output[0]" == "$SCERROR" )
+       print("    <button title=\"Delete $pbiname from $jail\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;background-image: url('/images/application-exit.png');background-size: 100%; height: 48px; width: 48px;\" onclick=\"delConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\" height=48 width=48></button>\n");
+     else
+	print("<center><img align=\"center\" height=48 width=48 src=\"/images/warning.png\" alt=\"This application has dependencies which prevent it from being removed.\"><p>Required</p></center>");
+   } else {
+     global $pbiindexdir;
+     if ( file_exists("$pbiindexdir/$pbiorigin/LICENSE") ) {
+       // Read the license data
+       $pbilic = file_get_contents("$pbiindexdir/$pbiorigin/LICENSE");
+       print("    <button title=\"Install $pbiname\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;\" onclick=\"addConfirmLic('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."','".$pbilic."')\"><img src=\"/images/install.png\" height=48 width=48></button>\n");
+     } else {
+       print("    <button title=\"Install $pbiname\" style=\"background-color: Transparent;background-repeat:no-repeat;border: none;\" onclick=\"addConfirm('" . $pbiname ."','".rawurlencode($pbiorigin)."','".$pkgCmd."','".$jailUrl."')\"><img src=\"/images/install.png\" height=48 width=48></button>\n");
+     }
+  }
 
 }
 
@@ -542,10 +557,10 @@ function display_app_link($pbilist, $jail)
 ?>
    
 <br>
-<table class="jaillist" style="width:<? if ( $deviceType == "computer" ) { echo "600px"; } else { echo "100%"; } ?>">
+<table class="jaillist" style="width:<?php if ( $deviceType == "computer" ) { echo "600px"; } else { echo "100%"; } ?>">
   <tr>
     <th colspan=3>
-      <? 
+      <?php 
          echo "$pbiname - $pbiver"; 
  	 if ( "$jail" != "#system" )
            echo " ($jail)";
@@ -554,7 +569,7 @@ function display_app_link($pbilist, $jail)
   </tr>
   <tr>
      <td style="vertical-align: middle; width: 60px;">
-      <?
+      <?php
  	 $appbusy=false;
          foreach($dStatus as $curStatus) {
   	   if ( strpos($curStatus, "pbi $pbiorigin") !== false ) {
@@ -574,12 +589,12 @@ function display_app_link($pbilist, $jail)
 	 }
       ?>
     </td>
-    <td align=left style="width: <? if($hasIcons){ print("60%"); } else { print("100%"); }?>">
-      <img align="left" height=64 width=64 src="images/pbiicon.php?i=<? echo "$pbicdir"; ?>/icon.png">
-       <a href="<? echo "$pbiweb"; ?>" target="_new"><? echo "$pbiauth"; ?></a> 
-       <a href="http://www.freshports.org/<? echo "$pbiorigin"; ?>" target="_new"><img src="/images/external-link.png" height=20 width=20 title="View this package in FreshPorts"></a><br>
-       Version: <b><? echo "$pbiver"; ?></b><br>
-<?
+    <td align=left style="">
+      <img align="left" height=64 width=64 src="images/pbiicon.php?i=<?php echo "$pbicdir"; ?>/icon.png">
+       <a href="<?php echo "$pbiweb"; ?>" target="_new"><?php echo "$pbiauth"; ?></a> 
+       <a href="http://www.freshports.org/<?php echo "$pbiorigin"; ?>" target="_new"><img src="/images/external-link.png" height=20 width=20 title="View this package in FreshPorts"></a><br>
+       Version: <b><?php echo "$pbiver"; ?></b><br>
+<?php
   if ( $isPBI ) {
     if ( ! empty($pbirating) and $pbirating != $SCERROR ) {
       if ( strpos($pbirating, "5") === 0 )
@@ -622,40 +637,40 @@ function display_app_link($pbilist, $jail)
   </tr>
   <tr>
     <td colspan="3">
-       <p><? echo $pbidesc; ?></p>
+       <p><?php echo $pbidesc; ?></p>
     </td>
   </tr>
 
-<? if ( $isPBI) { ?>
+<?php if ( $isPBI) { ?>
 
   <tr>
     <td colspan="3">
 <div id="tab-container" class='tab-container'>
    <ul class='etabs'>
-     <?  if ( $hasService and $pbiInstalled ) { ?>
+     <?php  if ( $hasService and $pbiInstalled ) { ?>
      <li class='tab'><a href="#tabs-service">Services</a></li>
-     <? } ?>
-     <?  if ( $hasConfig and $pbiInstalled ) { ?>
+     <?php } ?>
+     <?php  if ( $hasConfig and $pbiInstalled ) { ?>
      <li class='tab'><a href="#tabs-configure">Configuration</a></li>
-     <? } ?>
-     <?  if ( ! empty($pbiss) ) { ?>
+     <?php } ?>
+     <?php  if ( ! empty($pbiss) ) { ?>
      <li class='tab'><a href="#tabs-screenshots">Screenshots</a></li>
-     <? } ?>
-     <?  if ( ! empty($pbirelated) ) { ?>
+     <?php } ?>
+     <?php  if ( ! empty($pbirelated) ) { ?>
      <li class='tab'><a href="#tabs-related">Related</a></li>
-     <? } ?>
-     <?  if ( ! empty($pbiplugins) ) { ?>
+     <?php } ?>
+     <?php  if ( ! empty($pbiplugins) ) { ?>
      <li class='tab'><a href="#tabs-plugins">Plugins</a></li>
-     <? } ?>
-     <?  if ( ! empty($pbioptions) ) { ?>
+     <?php } ?>
+     <?php  if ( ! empty($pbioptions) ) { ?>
      <li class='tab'><a href="#tabs-options">Options</a></li>
-     <? } ?>
-     <?  if ( ! empty($pbideps) ) { ?>
+     <?php } ?>
+     <?php  if ( ! empty($pbideps) ) { ?>
      <li class='tab'><a href="#tabs-deps">Dependencies</a></li>
-     <? } ?>
+     <?php } ?>
    </ul>
    <div class="panel-container">
-     <?  // Do we have screenshots to display?
+     <?php  // Do we have screenshots to display?
          if ( $hasService and $pbiInstalled ) {
             echo "<div id=\"tabs-service\">\n";
 	    display_service_details();
@@ -710,7 +725,7 @@ function display_app_link($pbilist, $jail)
     </td>
   </tr>
 
-<? } ?>
+<?php } ?>
 
 </table>
 

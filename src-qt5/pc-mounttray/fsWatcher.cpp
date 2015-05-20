@@ -37,6 +37,7 @@ QStringList FSWatcher::getFSmountpoints(){
       QString used = tmp[1].section(" ",1,1,QString::SectionSkipEmpty);
       double iUsed = floor(displayToDouble(used));
       double iTotal = floor(displayToDouble(avail)) + iUsed;
+      if(iUsed <=0 || iTotal <=0){ continue; } //skip this line - error getting values
       int percent = calculatePercentage(iUsed, iTotal);
       //qDebug() << "Percent calc: tot:"<<iTotal<<"used"<<iUsed<<"percent"<<percent;
       //format the output string and add it in
@@ -53,17 +54,19 @@ QStringList FSWatcher::getFSmountpoints(){
     else if(dfout[i].startsWith("linprocfs")){}
     else if(dfout[i].startsWith("linsysfs")){}
     else if(dfout[i].startsWith("fdescfs")){}
+    else if(dfout[i].contains("/boot/efi")){}
     else{
       //Now parse out the info  
       dfout[i].replace("\t"," ");
       QString fs = dfout[i].section("  ",1,1,QString::SectionSkipEmpty).simplified();
-      if(fs != "zfs" && fs!="cd9660" && fs!="nullfs" && fs!="fusefs"){  //ignore zfs filesystems (already taken care of)
+      if(fs != "zfs" && fs!="cd9660" && fs!="nullfs" && fs!="fusefs" && fs!="autofs"){  //ignore zfs filesystems (already taken care of)
         QString name = dfout[i].section("  ",6,6,QString::SectionSkipEmpty).simplified();
         QString total = dfout[i].section("  ",2,2,QString::SectionSkipEmpty).simplified();
         QString used = dfout[i].section("  ",3,3,QString::SectionSkipEmpty).simplified();
         //Calculate the percent
         double iUsed = displayToDouble(used);
         double iTotal = displayToDouble(total);
+	if(iUsed <=0 || iTotal <=0){ continue; } //skip this line - error getting values
         int percent = calculatePercentage(iUsed, iTotal);
         //qDebug() << "df Item:" << dfout[i];
         //qDebug() << " - Detected:" << name << fs << iTotal << iUsed << percent;
@@ -83,6 +86,7 @@ int FSWatcher::displayToDouble(QString entry){
   //qDebug() << "Display to Int conversion:" << entry;
   QString units = entry.right(1); //last character
   entry.chop(1); //remove the unit
+  entry = entry.replace(",","."); //replace any comma's with period's (Europe/US difference)
   double num = entry.toDouble();
   //qDebug() << "initial number:" << num << "units:" << units;
   QStringList unitL; unitL << "K" << "M" << "G" << "T" << "P" << "E" << "Z" << "Y";

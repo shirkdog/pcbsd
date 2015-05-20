@@ -1,4 +1,5 @@
 bin/lpreserver
+bin/lpreserver-host-iscsi
 share/lpreserver/backend/zfsmon.sh
 share/lpreserver/backend/zfsrmsnap.sh
 share/lpreserver/backend/runrep.sh
@@ -12,5 +13,3 @@ share/lpreserver/backend/backup-zfs.sh
 share/lpreserver/backend/zfsmksnap.sh
 share/lpreserver/backend/runscrub.sh
 share/lpreserver/backend/runsnap.sh
-@dirrm share/lpreserver/backend
-@dirrm share/lpreserver

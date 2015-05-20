@@ -3,6 +3,9 @@
 #include <QGraphicsPixmapItem>
 #include <QTemporaryFile>
 #include <QCloseEvent>
+#include <QInputDialog>
+#include <QScreen>
+
 #include <pcbsd-netif.h>
 #include <pcbsd-utils.h>
 
@@ -15,9 +18,12 @@
 #include "firstboot.h"
 #include "helpText.h"
 
-Installer::Installer(QWidget *parent) : QMainWindow(parent)
+Installer::Installer(QWidget *parent) : QMainWindow(parent, Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint)
 {
     setupUi(this);
+    //Setup the window
+    this->setGeometry( QApplication::primaryScreen()->geometry() ); //full screen
+    
     translator = new QTranslator();
 
     connect(backButton, SIGNAL(clicked()), this, SLOT(slotBack()));
@@ -37,7 +43,14 @@ Installer::Installer(QWidget *parent) : QMainWindow(parent)
     connect(lineUsername,SIGNAL(textChanged(const QString)),this,SLOT(slotCheckUser()));
     connect(linePW,SIGNAL(textChanged(const QString)),this,SLOT(slotCheckUser()));
     connect(linePW2,SIGNAL(textChanged(const QString)),this,SLOT(slotCheckUser()));
-
+    connect(line_PCpass, SIGNAL(textChanged(const QString)), this, SLOT(slotCheckUser())) ;
+    connect(line_PCpass_repeat, SIGNAL(textChanged(const QString)), this, SLOT(slotCheckUser())) ;
+    connect(group_usePC, SIGNAL(toggled(bool)), this, SLOT(slotCheckUser()) );
+    connect(push_PC_device, SIGNAL(clicked()), this, SLOT(slotGetPCDevice()) );
+    
+    connect(tool_testAudio, SIGNAL(clicked()), this, SLOT(slotPlayAudioTest()) );
+    connect(slider_volume, SIGNAL(valueChanged(int)), this, SLOT(slotAudioVolumeChanged()) );
+    connect(combo_audiodevice, SIGNAL(currentIndexChanged(int)), this, SLOT(slotSetAudioDev()) );
     backButton->setText(tr("&Back"));
     nextButton->setText(tr("&Next"));
 
@@ -92,6 +105,26 @@ Installer::Installer(QWidget *parent) : QMainWindow(parent)
     // Update the status bar
     // This makes the status text more "visible" instead of using the blue background
     statusBar()->setStyleSheet("background: white");
+    
+    //Load the audio settings values
+    combo_audiodevice->clear();
+    QStringList devs = pcbsd::Utils::runShellCommand("pc-sysconfig list-audiodev").join("").split(", ");
+    int def = -1; bool found = false;
+    for(int i=0; i<devs.length(); i++){
+      combo_audiodevice->addItem(devs[i], devs[i].section(":",0,0)); //<full text>, <pcmID>
+      if(devs[i].contains(" default")){ found = true; def = i; }
+    }
+    if(def<0 && !devs.isEmpty()){ def=0; }
+    if(def<0){
+      //No audio devices found - disable this functionality
+      Page_Audio->setEnabled(false); //just do the whole page - nothing will work
+    }else{
+      combo_audiodevice->setCurrentIndex(def); //make sure this item is initially selected
+      if(!found){ slotSetAudioDev(); } //make sure to run the setup command initially
+    }
+    slider_volume->setValue(100);
+    slotAudioVolumeChanged(); //update the volume % label
+    
 }
 
 Installer::~Installer()
@@ -232,6 +265,20 @@ void Installer::slotCheckUser()
      return;
   if ( linePW->text() != linePW2->text() )
      return;
+  if(group_usePC->isChecked()){
+    if(line_PCpass->text().isEmpty() || line_PCpass_repeat->text().isEmpty())
+       return;
+    if(line_PCpass->text() != line_PCpass_repeat->text())
+      return;
+    if(push_PC_device->whatsThis().isEmpty())
+      return;
+    if( !QFile::exists("/dev/"+push_PC_device->whatsThis()) ){
+      push_PC_device->setWhatsThis(""); //clear this for later
+      push_PC_device->setText(tr("Select")); //reset back to initial text
+      return;
+    }
+  }
+  
   nextButton->setEnabled(true);
 }
 
@@ -254,7 +301,7 @@ void Installer::slotNext()
      slotCheckUser();
 
    // Check if we have a wireless device
-   if ( installStackWidget->currentIndex() == 3) {
+   if ( installStackWidget->currentIndex() == 4) {
      if ( system("ifconfig wlan0") == 0 ) {
        haveWifi = true;
        QTimer::singleShot(50,this,SLOT(slotScanNetwork()));
@@ -266,8 +313,8 @@ void Installer::slotNext()
    }
 
    // If not doing a wireless connection
-   if ( installStackWidget->currentIndex() == 3 && ! haveWifi) {
-      installStackWidget->setCurrentIndex(5);
+   if ( installStackWidget->currentIndex() == 4 && ! haveWifi) {
+      installStackWidget->setCurrentIndex(6);
       // Save the settings
       saveSettings();
       nextButton->setText(tr("&Finish"));
@@ -380,7 +427,7 @@ void Installer::slotHelp()
 void Installer::slotScanNetwork()
 {
   QString strength, ssid, security, FileLoad;
-  QStringList ifconfout, ifline;
+  QStringList ifconfout;
   int foundItem = 0;
 
   // Clear the list box and disable the add button
@@ -393,20 +440,33 @@ void Installer::slotScanNetwork()
   qDebug() << ifconfout;
 
   //display the info for each wifi access point
+  QStringList wap;
   for(int i=1; i<ifconfout.size(); i++){    //Skip the header line by starting at 1
-    ifline = NetworkInterface::parseWifiScanLine(ifconfout[i],true); //get a single line
+    QStringList ifline = NetworkInterface::parseWifiScanLine(ifconfout[i],true); //get a single line
     //save the info for this wifi
     ssid = ifline[0];
     strength = ifline[4];
     //determine the icon based on if there is security encryption
     security = ifline[6]; //NetworkInterface::getWifiSecurity(ssid,DeviceName);
+    if(security.toLower()=="error"){ continue; } //skip this wifi point - will not work properly
+    wap << strength+"::::"+security+"::::"+ssid; //save this for sorting later
+  }
+  wap.sort(); //sort these by signal strength (low->high)
+  for(int i=wap.length()-1; i>=0; i--){ //now add them in reverse order (high->low)
+    strength = wap[i].section("::::",0,0);
+    security = wap[i].section("::::",1,1);
+    ssid = wap[i].section("::::",2,50);
     if(security.contains("None")){
       FileLoad = ":/modules/images/object-unlocked.png";
     }else{
       FileLoad = ":/modules/images/object-locked.png";
     }
     //Add the wifi access point to the list
-    listWidgetWifi->addItem(new QListWidgetItem(QIcon(FileLoad), ssid + " (signal: " +strength + ")") );
+    if(strength.contains("100")){ //This gets sorted down with the 10% range - add it to the top
+      listWidgetWifi->insertItem(0, new QListWidgetItem(QIcon(FileLoad), ssid + " (signal: " +strength + ")") );
+    }else{
+      listWidgetWifi->addItem(new QListWidgetItem(QIcon(FileLoad), ssid + " (signal: " +strength + ")") );
+    }
     foundItem = 1; //set the flag for wifi signals found
   }
    
@@ -439,7 +499,7 @@ void Installer::addNetworkProfile(QString ssid)
     slotQuickConnect("",SSID);
   }else{
     //Open the dialog to prompt for the Network Security Key
-    dialogNetKey = new netKey();
+    dialogNetKey = new netKey(this, sectype);
     //Insert the SSID into the dialog
     dialogNetKey->setSSID(SSID);
     //connect the signal from the dialog to the quick-connect slot
@@ -463,6 +523,43 @@ void Installer::slotQuickConnect(QString key,QString SSID){
   backButton->setVisible(false);
   nextButton->disconnect();
   connect(nextButton, SIGNAL(clicked()), this, SLOT(slotFinished()));
+}
+
+void Installer::slotGetPCDevice(){
+  //This will find any personacrypt capable devices
+  QStringList devs = pcbsd::Utils::runShellCommand("personacrypt list -r");
+  if(devs.isEmpty()){
+    QMessageBox::warning(this, tr("No Devices Found"), tr("Please connect a removable device and try again") );
+     return;
+  }
+  bool ok = false;
+  QString device = QInputDialog::getItem(this, tr("Select Removable Device"), tr("Warning: Any existing data on the selected device will be deleted during the user creation process."), devs, 0, false, &ok);
+  if(!ok || device.isEmpty()){ return; } //cancelled
+  push_PC_device->setText(device.section(":",0,0));
+  push_PC_device->setWhatsThis(device.section(":",0,0)); //save the device ID here for later use
+  slotCheckUser(); //Update the UI
+}
+
+// Set the current audio device
+void Installer::slotSetAudioDev(){
+   //Get the currently selected device
+  QString dev = combo_audiodevice->currentData().toString();
+  if(dev.isEmpty()){ return; }
+  //Now set the device
+  QProcess::execute("pc-sysconfig \"setdefaultaudiodevice "+dev+"\"");
+}
+   
+//Update the audio volume percentage
+void Installer::slotAudioVolumeChanged(){
+  label_volume->setText( QString::number(slider_volume->value())+"%" );	
+}
+
+// Play the test audio clip
+void Installer::slotPlayAudioTest(){
+  //Ensure the volume is set to te specified value
+  QProcess::execute("mixer vol "+QString::number(slider_volume->value()));
+  //Now play the audio clip
+  QProcess::startDetached("mplayer /usr/local/share/sounds/testsound.ogg");
 }
 
 void Installer::saveSettings()
@@ -509,12 +606,30 @@ void Installer::saveSettings()
       stream << linePW->text();
     ufile.close();
   }
-  QString userCmd = " | pw useradd -n \"" + lineUsername->text() + "\" -c \"" + lineName->text() + "\" -h 0 -s \"/bin/csh\" -m -d \"/usr/home/" + lineUsername->text() + "\" -G \"wheel,operator\"";
+
+  QString userCmd;
+  if ( QFile::exists("/usr/local/bin/VirtualBox") )
+  {
+    userCmd = " | pw useradd -n \"" + lineUsername->text() + "\" -u "+spin_UID->cleanText()+" -c \"" + lineName->text() + "\" -h 0 -s \"/bin/csh\" -m -d \"/usr/home/" + lineUsername->text() + "\" -G \"wheel,operator,vboxusers\"";
+  } else {
+    userCmd = " | pw useradd -n \"" + lineUsername->text() + "\" -u "+spin_UID->cleanText()+" -c \"" + lineName->text() + "\" -h 0 -s \"/bin/csh\" -m -d \"/usr/home/" + lineUsername->text() + "\" -G \"wheel,operator\"";
+  }
   system("cat " + ufile.fileName().toLatin1() + userCmd.toLatin1());
   ufile.remove();
 
   // Sync after adding the user
   sync();
+  
+  //Create the personacrypt device (if selected)
+  if(group_usePC->isChecked()){
+    QTemporaryFile tmpfile("/tmp/.XXXXXXXXXXXXXXXXX");
+    if( tmpfile.open() ){
+      QTextStream ostream(&tmpfile);
+	ostream << line_PCpass->text();
+      tmpfile.close();
+      QProcess::execute("personacrypt init \""+lineUsername->text()+"\" \""+tmpfile.fileName()+"\" "+push_PC_device->whatsThis());
+    }
+  } 
 
   // Enable Flash for the new user
   QProcess::execute("su", QStringList() << lineUsername->text() << "-c" << "/usr/local/bin/flashpluginctl on" );

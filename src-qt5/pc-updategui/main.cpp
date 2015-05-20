@@ -8,11 +8,21 @@
 #include "mainUI.h"
 #include "../config.h"
 
+#include <unistd.h>
+#include <sys/types.h>
+
+
 int main( int argc, char ** argv )
 {
    PCSingleApplication a(argc, argv);
    if (!a.isPrimaryProcess()){ return 0; }
 
+    // Make sure we are running as root
+    if (getuid() != 0) {
+       qDebug("Error, needs to be run as root");
+       exit(1);
+    }
+    
    QTranslator translator;
    QLocale mylocale;
    QString langCode = mylocale.name();
@@ -21,7 +31,8 @@ int main( int argc, char ** argv )
    translator.load( QString("UpdateGui_") + langCode, PREFIX + "/share/pcbsd/i18n/" );
    a.installTranslator( &translator );
    qDebug() << "Locale:" << langCode;
-
+   QTextCodec::setCodecForLocale( QTextCodec::codecForName("UTF-8") ); //Force Utf-8 compliance
+   
    // Check the language we are running in, and set the correct font
    if (  langCode == "zh_CN" ||  langCode == "zh_TW" )
    {

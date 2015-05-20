@@ -131,7 +131,7 @@ root zpool of the target system to update. I.E:
  # disk0=ada0s1a
 
 
-# partition=(all, free, s1, s1, s3, s4, image)
+# partition=(all, free, s1, s2, s3, s4, image)
 
 After setting disk[0-9], the partition= variable is used to specify which target
 partition we will be working with for this device.
@@ -367,6 +367,16 @@ the installed system and run
 
 runExtCommand is used when you wish to run a command outside the chroot
 The variable $FSMNT is set to the mount-point of your installed system
+
+In addition to these commands, the following may also be used to run
+commands before doing package installation, and dist extraction respectively:
+
+# runPrePkgCommand
+# runPrePkgScript=
+# runPrePkgExtCommand=
+# runPreExtractCommand
+# runPreExtractScript=
+# runPreExtractExtCommand=
 
 
 ########################################################################

@@ -161,6 +161,13 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     Q_UNUSED(event);
     saveSettings();
+    //Stop all the extra QThreads
+    softwareItems.exit();
+    systemItems.exit();
+    hardwareItems.exit();
+    networkingItems.exit();
+    deItems.exit();
+    toolsItems.exit();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -302,7 +309,7 @@ void MainWindow::loadSettings()
     setBigIcons(str == CONFIG_ICON_SIZE_LARGE);
     str = reader.value(CONFIG_VIEW_TYPE, QVariant(CONFIG_VIEW_TYPE_GRID)).toString();
     setListMode(str == CONFIG_VIEW_TYPE_LIST);
-    misSettingsFixedLayout = reader.value(CONFIG_FIXED_LAYOUT, QVariant(false)).toBool();
+    misSettingsFixedLayout = reader.value(CONFIG_FIXED_LAYOUT, QVariant(true)).toBool();
 
 }
 

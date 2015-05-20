@@ -8,6 +8,9 @@
 # Source external functions
 . /usr/local/share/pcbsd/scripts/functions.sh
 
+# Set a default pager
+PAGER=${PAGER:-more}
+
 require_root() 
 {
   UTEST="`whoami`"
@@ -47,7 +50,7 @@ Type in help <command> for information and usage about that command
    listcron - Listing of scheduled snapshots and scrubs
    listsnap - List snapshots of a zpool/dataset
      mksnap - Create a ZFS snapshot of a zpool/dataset
-  replicate - Enable / Disable ZFS replication to a remote system
+  replicate - Sub-command of replication tasks
  revertsnap - Revert zpool/dataset to a snapshot
      rmsnap - Remove a snapshot
         set - Set lpreserver options
@@ -145,7 +148,7 @@ If you plan to replicate to a non-root user, please set the following
 permissions on the remote dataset:
 
 # zfs allow -u <user> \\
-  create,receive,mount,userprop,destroy,send,hold <remotedataset>
+  atime,canmount,clone,compression,create,destroy,hold,mount,mountpoint,promote,receive,rename,send,userprop <remotedataset>
 
 Usage:
 
@@ -155,15 +158,23 @@ Usage:
 Available Flags:
 
          add - Add a new replication target
+      expand - Expand the remote iscsi zpool
+      export - Export / Offline an iSCSI zpool
+      import - Import / Online an iSCSI zpool
         init - Initialize the remote side again
 	list - List replication targets
       remove - Remove a replication target
          run - Start a replication manually
+   saveiscsi - Save the iSCSI config data / GELI key
 
 
-Add Options:
+add Options:
 
 	add <remotehost> <user> <port> <hostdataset> <remotedataset> <time>
+	
+	add iscsi <*.lps file> <hostdataset> <time> [geli key]
+
+	add iscsi <*.lpiscsi file> <hostdataset> <time> [password file]
 
 	<time> = XX/sync/hour/30min/10min/manual
 	    XX= Time to perform replication (in 24 notation)
@@ -187,8 +198,32 @@ Add Options:
 	Will schedule replication of tank1 to tankbackup/backups at 10PM,
 	notated in 24hour time
 
+expand Options:
 
-Init Options:
+	expand <localdataset/zpool> <target host>
+
+	Will expand the iSCSI-hosted zpool to the new size of the remote volume.
+	For obvious reasons, this should only be done after the remote host has
+	increased the size of the remote iSCSI volume.
+
+	NOTE: This can only be used to grow a zpool, shrinking is not permitted.
+
+export Options:
+
+	export <localdataset/zpool> <target host>
+
+	Exports the backup iSCSI zpool associated with the local dataset or
+	zpool replication specified for <target host>
+
+import Options:
+
+	import <localdataset/zpool> <target host>
+
+	Imports the backup iSCSI zpool associated with the local dataset or
+	zpool replication specified for <target host>
+
+
+init Options:
 
 	init <localdataset/zpool> <target host>
 
@@ -196,19 +231,29 @@ Init Options:
 	when your replication gets stuck. Doing this option will remove
 	all the data on the remote side, and require a full re-sync again.
 
-Remove Options:
+remove Options:
 
 	remove <dataset> <target host>
 	
 	Remove a replication task indicated by <dataset>
         Use 'replicate list' for a list of IDs. 
 
-Run Options:
+run Options:
 
 	run <dataset> <target host>
 
 	Starts a manual replication for <dataset> streaming to <target host>
 
+saveiscsi options:
+
+	saveiscsi <localdataset/zpool> <target host> [password file]
+
+	Creates a GELI encrypted file, which contains all the iSCSI connection
+	information and GELI key for the replication target. Will prompt for
+	the password to set on this GELI encrypted file.
+
+	This file can then be used with the "replicate add" command to import
+	the backup zpool on another system or from the PC-BSD install media.
 
 Examples:
 
@@ -631,7 +676,16 @@ revertsnap) require_root
          ;;
  replicate) shift
 	    case ${1} in
-		add) require_root ; add_rep_task "$2" "$3" "$4" "$5" "$6" "$7" ;;
+		add) require_root ; 
+		     if [ "$2" = "iscsi" ] ; then 
+		       add_rep_iscsi_task "$3" "$4" "$5" "$6"
+		     else
+		       add_rep_task "$2" "$3" "$4" "$5" "$6" "$7"
+		     fi
+		     ;;
+		expand) require_root ; expand_iscsi_zpool "$2" "$3" ;;
+		export) require_root ; export_iscsi_zpool "$2" "$3" ;;
+		import) require_root ; import_iscsi_zpool "$2" "$3" ;;
 		init) require_root ; init_rep_task "$2" "$3" ;;
 		list) list_rep_task ;;
 		remove) require_root
@@ -647,6 +701,7 @@ revertsnap) require_root
 	  	      ${PROGDIR}/backend/runrep.sh "$2" "$3"
 		      exit $?
 		      ;;
+		saveiscsi) require_root ; save_iscsi_zpool_data "$2" "$3" "$4" ;;
 		*) help_replicate ;;
 	    esac
 	 ;;

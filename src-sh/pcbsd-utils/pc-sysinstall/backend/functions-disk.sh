@@ -432,11 +432,6 @@ setup_disk_slice()
             LASTSLICE=$((LASTSLICE+1))
         fi
 
-        if [ $LASTSLICE -gt 4 ]
-        then
-          exit_err "ERROR: BSD only supports primary partitions, and there are none available on $DISK"
-        fi
-
       fi
     fi
 
@@ -532,7 +527,7 @@ setup_disk_slice()
           p1|p2|p3|p4|p5|p6|p7|p8|p9|p10|p11|p12|p13|p14|p15|p16|p17|p18|p19|p20|p21|p22|p23|p24|p25|p26|p27)
             tmpSLICE="${DISK}${PTYPE}" 
             # Get the number of the gpt partition we are working on
-            s="`echo ${PTYPE} | awk '{print substr($0,length,1)}'`" 
+            s="`echo ${PTYPE} | cut -c 2-3`"
             run_gpart_gpt_part "${DISK}" "${BMANAGER}" "${s}"
             ;;
 
@@ -676,7 +671,7 @@ init_gpt_full_disk()
   rc_halt "gpart create -s GPT -f active ${_intDISK}"
   
   if [ "${_intBOOT}" = "GRUB" ] ; then
-  
+    touch ${TMPDIR}/.grub-full-gpt
     # Check the boot mode we are using {pc|efi}
     BOOTMODE=`kenv grub.platform`
     if [ "$BOOTMODE" = "efi" ]; then
@@ -686,12 +681,12 @@ init_gpt_full_disk()
       echo "${_intDISK}" >> ${TMPDIR}/.grub-install
     else
       # Doing bios-boot partition
-      rc_halt "gpart add -b 34 -s 1M -t bios-boot ${_intDISK}"
+      rc_halt "gpart add -s 1M -t bios-boot ${_intDISK}"
       # Doing a GRUB stamp? Lets save it for post-install
       echo "${_intDISK}" >> ${TMPDIR}/.grub-install
     fi
   else
-    rc_halt "gpart add -b 34 -s 128 -t freebsd-boot ${_intDISK}"
+    rc_halt "gpart add -s 128 -t freebsd-boot ${_intDISK}"
     echo_log "Stamping boot sector on ${_intDISK}"
     rc_halt "gpart bootcode -b /boot/pmbr ${_intDISK}"
   fi
@@ -721,7 +716,7 @@ init_mbr_full_disk()
 
   # Install new partition setup
   echo_log "Running gpart add on ${_intDISK}"
-  rc_halt "gpart add -a 4k -t freebsd -i 1 ${_intDISK}"
+  rc_halt "gpart add -b 2048 -a 4k -t freebsd -i 1 ${_intDISK}"
   sleep 2
   
   echo_log "Cleaning up ${_intDISK}s1"
@@ -735,6 +730,7 @@ init_mbr_full_disk()
     rc_halt "gpart bootcode -b /boot/boot0 ${_intDISK}"
   elif [ "$_intBOOT" = "GRUB" ] ; then
     # Doing a GRUB stamp? Lets save it for post-install
+    touch ${TMPDIR}/.grub-full-mbr
     echo "${_intDISK}" >> ${TMPDIR}/.grub-install
   else
     echo_log "Stamping boot1 on ${_intDISK}"
@@ -791,6 +787,7 @@ run_gpart_gpt_part()
   # Stop any journaling
   stop_gjournal "${slice}"
 
+  # We only install boot-loader if using GRUB for dual-boot GPT
   if [ "${_intBOOT}" = "GRUB" ] ; then
     # Check if the first partition is a bios-boot partition and convert if not
     gpart show $DISK | grep ' 1 ' | grep -q bios-boot
@@ -798,14 +795,10 @@ run_gpart_gpt_part()
       rc_halt "gpart modify -t bios-boot -i 1 ${DISK}"
     fi
     # Doing a GRUB stamp? Lets save it for post-install
-    grep -q "$DISK" ${TMPDIR}/.grub-install
+    grep -q "$DISK" ${TMPDIR}/.grub-install 2>/dev/null
     if [ $? -ne 0 ] ; then
       echo "${DISK}" >> ${TMPDIR}/.grub-install
     fi
-  else
-    rc_halt "gpart modify -t freebsd-boot -i ${slicenum} ${DISK}"
-    echo_log "Stamping boot sector on ${DISK}"
-    rc_halt "gpart bootcode -b /boot/pmbr ${DISK}"
   fi
 
   # Add the slice with the :mod tag, so we know we are modifying only
@@ -904,22 +897,24 @@ run_gpart_free()
   slice="${DISK}s${SLICENUM}"
   slicenum="${SLICENUM}" 
 
-  # Working on the first slice, make sure we have MBR setup
+  # Working on the first slice, make sure we have GPT setup
   gpart show ${DISK} >/dev/null 2>/dev/null
   if [ $? -ne 0 -a "$SLICENUM" = "1" ] ; then
-    echo_log "Initializing disk, no existing MBR setup"
-    rc_halt "gpart create -s mbr ${DISK}"
+    echo_log "Initializing disk, no existing GPT setup"
+    rc_halt "gpart create -s gpt ${DISK}"
   fi
 
-  # Install new partition setup
-  echo_log "Running gpart on ${DISK}"
-  rc_halt "gpart add -a 4k -t freebsd -i ${slicenum} ${DISK}"
-  sleep 2
-  
-  echo_log "Cleaning up $slice"
-  rc_halt "dd if=/dev/zero of=${slice} count=1024"
+  gpart show ${DISK} | head -n 1 | grep -q MBR
+  if [ $? -eq 0 ] ; then
+     tag="freembr"
+  else
+     tag="freegpt"
+  fi
 
-  sleep 1
+  # Check if on MBR and have >4 slices
+  if [ "$tag" = "freembr" -a $SLICENUM -gt 4 ]; then
+      exit_err "ERROR: BSD only supports 4 MBR primary partitions, and there are none available on $DISK"
+  fi
 
   if [ "${BMANAGER}" = "BSD" ]; then
     echo_log "Stamping boot sector on ${DISK}"
@@ -929,7 +924,7 @@ run_gpart_free()
     echo "${DISK}" >> ${TMPDIR}/.grub-install
   fi
 
-  slice=`echo "${DISK}:${SLICENUM}:mbr" | sed 's|/|-|g'`
+  slice=`echo "${DISK}:${SLICENUM}:${tag}" | sed 's|/|-|g'`
   # Lets save our slice, so we know what to look for in the config file later on
   if [ -z "$WORKINGSLICES" ]
   then

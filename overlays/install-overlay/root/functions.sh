@@ -64,6 +64,17 @@ cfg_card_busid()
   done < /tmp/.pciconf.$$
   rm /tmp/.pciconf.$$
 
+  # Check if we need to "flip" the cards, I.E. the Intel video should be the card #1, all others #2
+  echo "$card2" | grep -q -i -e "intel"
+  if [ $? -eq 0 ] ; then
+     tmpCard="$card1"
+     tmpCardBus="$card1bus"
+     card1="$card2"
+     card1bus="$card2bus"
+     card2="$tmpCard"
+     card2bus="$tmpCardBus"
+  fi
+
   # Which card are we configuring
   if [ "$whichcard" = "1" ] ; then
     cfgCard="$card1"
@@ -157,10 +168,14 @@ rtn()
 
 zpool_import()
 {
+  clear
+  echo "Please enter the pool name to import"
+  echo ""
   echo "Available zpools:"
+  echo "--------------------------------"
   zpool import | grep "pool: " | awk '{print $2}'
   echo "--------------------------------"
-  echo -e "Please enter the pool name to import:\c"
+  echo -e ">\c"
   read mypool
 
   zpool import -f -N $mypool
@@ -171,15 +186,26 @@ zpool_import()
   fi
 
   # Now try to mount the root dataset
-  mount -t zfs ${mypool}/ROOT/default /mnt
+  clear
+  echo "Please select the BE to mount, or ENTER for the most recent"
+  echo ""
+  echo "Available Boot-Environments:"
+  echo "--------------------------------"
+  zfs list -H | grep "$mypool/ROOT/" | awk '{print $1}' | cut -d '/' -f 3
+  lastRoot=`zfs list -H | grep "$mypool/ROOT/" | awk '{print $1}' | cut -d '/' -f 3 | tail -n 1`
+  echo "--------------------------------"
+  echo -e "$lastRoot> \c"
+  read mntBE
+  if [ -z "$mntBE" ] ; then
+     mntBE="$lastRoot"
+  fi
+
+  mount -t zfs $mypool/ROOT/${mntBE} /mnt
   if [ $? -ne 0 ] ; then
-     lastRoot=`zfs list -H | grep "$mypool/ROOT/" | awk '{print $1}' | tail -n 1`
-     mount -t zfs ${lastRoot} /mnt
-     if [ $? -ne 0 ] ; then
-       echo "Failed to mount root dataset! Please manually mount to /mnt"
-       rtn
-       return 1
-     fi
+    zpool export $mypool
+    echo "Failed to mount root dataset! Please manually mount to /mnt"
+    rtn
+    return 1
   fi
 
   zfs list -H | tr -s '\t' ' ' | grep -v "${mypool}/ROOT/" | grep -v "$mypool " | grep -v " /mnt" > /tmp/.mntList.$$
@@ -188,6 +214,8 @@ zpool_import()
   do
      dset=`echo $line | awk '{print $1}'`
      lmnt=`echo $line | awk '{print $5}'`
+     if [ "$lmnt" = "none" -o "$lmnt" = "-" ] ; then continue ; fi
+
      mount -t zfs ${dset} /mnt/${lmnt}
      if [ $? -ne 0 ] ; then
        echo "Warning: Failed to mount: $dset to /mnt/$lmnt"
@@ -218,6 +246,7 @@ zpool_import()
 
 restamp_grub_install()
 {
+  clear
   mount | grep -q "on /mnt"
   if [ $? -ne 0 ] ; then
      zpool_import "nochroot"
@@ -232,19 +261,22 @@ restamp_grub_install()
   cp /root/beadm.install /mnt/root/beadm.install
   if [ $? -ne 0 ] ; then
      echo "Failed copying beadm.install..."
+     rtn
      return 1
   fi
 
   # Run the grub restamp now
-  chroot /mnt restamp-grub
+  chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
   if [ $? -ne 0 ] ; then
-     echo "Failed running restamp-grub..."
+     echo "Failed running grub-mkconfig..."
      rm /mnt/root/beadm.install
+     rtn
      return 1
   fi
 
   # Remove installer version of beadm.install
   rm /mnt/root/beadm.install
+  rtn
 
   return 0
 }

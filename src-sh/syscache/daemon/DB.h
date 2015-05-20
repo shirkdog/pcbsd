@@ -35,6 +35,7 @@ public slots:
 
 private:
 	QHash<QString,QString> *HASH;
+	QProcess *longProc;
 	bool stopping;
 
 	//System Command functions 
@@ -65,8 +66,12 @@ private slots:
 	void syncPkgLocal();
 	void syncPkgRemoteJail(QString jail);
 	void syncPkgRemote();
-	void syncSysStatus();
+	void syncSysStatus(); //this is run as a long process (non-blocking)
+	void ParseSysStatus(QStringList info); //process finished, parse the outputs
 	void syncPbi();
+
+	//Special slot for long precesses
+	void LongProcFinished(int, QProcess::ExitStatus);
 
 signals:
 	void finishedJails();
@@ -89,6 +94,8 @@ public:
 	QString fetchInfo(QStringList request);
 	//Request Format: [<type>, <cmd1>, <cmd2>, .... ]
 
+	void writeToLog(QString message);
+
 public slots:
 	void startSync();
 
@@ -103,16 +110,20 @@ private:
 	QStringList doSearch(QString srch, QString jail = "pbi", int findmin = 10, int filter = 0);
 	//Filter Note: [0=all, 1=graphical, -1=!graphical, 2=server, -2=!server, 3=text, -3=!text]
 
-	QStringList sortByName(QStringList origins);
+	QStringList sortByName(QStringList origins, bool haspriority = false);
+	
+	//Simplification routine for fetching general application info (faster than multiple calls)
+	QStringList FetchAppSummaries(QStringList pkgs, QString jail);
 
 	//Internal pause/syncing functions
+	void validateHash(QString key);
 	bool isRunning(QString key);
 	void pausems(int ms);
-	void writeToLog(QString message);
+
 
 private slots:
 	void watcherChange(QString); //watcher found something change
-	void kickoffSync();
+	bool kickoffSync();
 	
 	//Syncer status updates
 	void localSyncFinished(){ locrun = false; writeToLog(" - Local Sync Finished:"+QDateTime::currentDateTime().toString(Qt::ISODate)); }

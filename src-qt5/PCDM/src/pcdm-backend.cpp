@@ -6,6 +6,9 @@
 
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QTemporaryFile>
+#include <QTextStream>
+#include <QDebug>
 
 #include "pcdm-backend.h"
 #include "pcdm-config.h"
@@ -14,6 +17,7 @@
 QStringList displaynameList,usernameList,homedirList,usershellList,instXNameList,instXBinList,instXCommentList,instXIconList,instXDEList;
 QString logFile;
 QString saveX,saveUsername, lastUser, lastDE;
+bool Over1K = true;
 
 QStringList Backend::getAvailableDesktops(){  
   if(instXNameList.isEmpty()){ loadXSessionsData(); }
@@ -50,11 +54,21 @@ QString Backend::getDesktopBinary(QString xName){
   return instXBinList[index];
 }
 
-QStringList Backend::getSystemUsers(){
+void Backend::allowUidUnder1K(bool allow){
+  Over1K = !allow;
+  //Make sure to re0load the user list if necessary
+  readSystemUsers();
+}
+
+QStringList Backend::getSystemUsers(bool realnames){
   if(usernameList.isEmpty()){
     readSystemUsers();
   }
-  return displaynameList;
+  if(realnames){
+    return displaynameList;
+  }else{
+    return usernameList;
+  }
 }
 
 QString Backend::getALUsername(){
@@ -82,6 +96,7 @@ QString Backend::getALPassword(){
 }
 
 QString Backend::getUsernameFromDisplayname(QString dspname){
+  if(dspname.isEmpty()){return "";}
   int i = displaynameList.indexOf(dspname);
   if(i == -1){ i = usernameList.indexOf(dspname); }
   
@@ -90,6 +105,7 @@ QString Backend::getUsernameFromDisplayname(QString dspname){
 }
 
 QString Backend::getDisplayNameFromUsername(QString username){
+  if(username.isEmpty()){return "";}
   int i = usernameList.indexOf(username);
   if(i==-1){ i = displaynameList.indexOf(username); } //make sure it was not a display name passed in
   if(i==-1){ return ""; }
@@ -99,14 +115,18 @@ QString Backend::getDisplayNameFromUsername(QString username){
 }
 
 QString Backend::getUserHomeDir(QString username){
+  if(username.isEmpty()){ return ""; }
   int i = usernameList.indexOf(username);
   if( i == -1 ){ i = displaynameList.indexOf(username); }
+  if( i < 0){ return ""; }
   return homedirList[i];
 }
 
 QString Backend::getUserShell(QString username){
+  if(username.isEmpty()){ return ""; }
   int i = usernameList.indexOf(username);
   if( i == -1 ){ i = displaynameList.indexOf(username); }
+  if( i < 0){ return ""; }
   return usershellList[i];	
 }
 
@@ -237,11 +257,12 @@ void Backend::openLogFile(QString logFilePath){
 }
 
 void Backend::log(QString line){
-  QFile lFile(logFile);
+  qDebug() << line; //quick replacement to verify the new logging system works
+  /*QFile lFile(logFile);
   lFile.open(QIODevice::Append);
   QTextStream out(&lFile);
   out << line << "\n";
-  lFile.close();
+  lFile.close();*/
 }
 
 void Backend::checkLocalDirs(){
@@ -268,6 +289,7 @@ QString Backend::getLastUser(){
 }
 
 QString Backend::getLastDE(QString user){
+  if(user.isEmpty()){ return ""; }
   if(lastDE.isEmpty()){
     readSystemLastLogin();
   }
@@ -330,6 +352,51 @@ void Backend::saveDefaultSysEnvironment(QString lang, QString keymodel, QString 
     }
 }
 
+QStringList Backend::getRegisteredPersonaCryptUsers(){
+  //This is just a quick check to see what users are personacrypt-enabled on this system
+  //  needs to do any of the personacrypt stuff on this system
+  if( !QFile::exists("/usr/local/bin/personacrypt") ){ return QStringList(); } //not installed
+  //Make sure there is at least one profile available
+  QDir dir("/var/db/personacrypt");
+  QStringList users = dir.entryList(QStringList()<<"*.key", QDir::Files | QDir::NoDotAndDotDot, QDir::Name); 
+  for(int i=0; i<users.length(); i++){
+    users[i].chop(4); //chop the ".key" off the end to get the username
+  }
+  return users;
+}
+
+QStringList Backend::getAvailablePersonaCryptUsers(){
+  QStringList info = pcbsd::Utils::runShellCommand("personacrypt list");
+  QStringList users;
+  for(int i=0; i<info.length(); i++){
+    if(info[i].contains(" on ")){
+      users << info[i].section(" on ",0,0);
+    }
+  }
+  return users;
+}
+
+bool Backend::MountPersonaCryptUser(QString user, QString pass){
+  //First, the password needs to be saved to a temporary file for input
+  QTemporaryFile tmpfile("/tmp/.XXXXXXXXXXXXXXXXXXXX"); //just a long/hidden randomized name
+    tmpfile.setAutoRemove(true);
+  if( !tmpfile.open() ){ return false; } //could not open the temporary file
+  QTextStream out(&tmpfile);
+  out << pass;
+  tmpfile.close();
+  
+  //Second, the mount command needs to be run (be careful about spaces in the names)
+  return 0==QProcess::execute("personacrypt mount \""+user+"\" \""+tmpfile.fileName()+"\"");
+  //Finally, delete the temporary input file (if personacrypt did not already)
+    //QTemporaryFile automatically tries to delete the file when it goes out of scope
+    // no need to manually remove it
+}
+
+bool Backend::UnmountPersonaCryptUser(QString user){
+  return 0==QProcess::execute("personacrypt umount \""+user+"\"");
+}
+
+
 bool Backend::writeFile(QString fileName, QStringList contents){
   //Open the file with .tmp extension
   QFile file(fileName+".tmp");
@@ -382,8 +449,8 @@ void Backend::loadXSessionsData(){
   QString localeCode = QLocale().name(); //gets the current locale code
   //Find all *.desktop files
   QDir dir(xDir);
-  QStringList deFiles = dir.entryList(QDir::Files);
-  deFiles = deFiles.filter(".desktop"); //only get *.desktop files
+  QStringList deFiles = dir.entryList(QStringList() << "*.desktop", QDir::Files, QDir::Name);
+  //deFiles = deFiles.filter(".desktop"); //only get *.desktop files
   //Read each file to see if that desktop is installed
   for(int i=0; i<deFiles.length(); i++){
     QStringList tmp = readXSessionsFile(xDir+deFiles[i],localeCode);
@@ -410,7 +477,7 @@ void Backend::loadXSessionsData(){
 	//Check to make sure we have a valid icon
 	if(!tmp[3].isEmpty() && !QFile::exists(tmp[3]) ){ tmp[3] = ""; }
 	instXIconList << tmp[3];
-	Backend::log( "PCDM: Found xsession: " + tmp.join(" ") );
+	Backend::log( "PCDM: Found xsession: " + deFiles[i].section("/",-1)+": "+tmp.join(" - ") );
       }
     }
   }
@@ -492,15 +559,27 @@ void Backend::readSystemUsers(){
     uList = QString( p.readAllStandardOutput() ).split("\n");
     
     //Remove all users that have:
+   QStringList filter; filter << "server" << "daemon" << "database" << "system"<< "account"<<"pseudo";
    for(int i=0; i<uList.length(); i++){
     bool bad = false;
-    // "nologin" as their shell
-    if(uList[i].section(":",6,6).contains("nologin")){bad=true;}
-    // "nonexistent" as their user directory
-    else if(uList[i].section(":",5,5).contains("nonexistent")){bad=true;}
-    // uid > 1000
-    else if(uList[i].section(":",2,2).toInt() < 1000){bad=true;}
-
+    QString dispcheck = uList[i].section(":",4,4).toLower();
+    // Shell Checks
+    if(uList[i].section(":",6,6).contains("nologin") || uList[i].section(":",6,6).isEmpty() || !QFile::exists(uList[i].section(":",6,6)) ){bad=true;}
+    // User Home Dir
+    else if(uList[i].section(":",5,5).contains("nonexistent") || uList[i].section(":",5,5).contains("/empty") || uList[i].section(":",5,5).isEmpty() ){bad=true;}
+    // uid > 0
+    else if(uList[i].section(":",2,2).toInt() < 1){bad=true;} //don't show the root user
+    //Check that the name/description does not contain "server"
+    else if(uList[i].section(":",2,2).toInt() <= 1000){
+	if(Over1K){ bad = true;} //ignore anything under UID 1001
+	else{
+	  //Apply the special <1000 filters
+	  for(int f=0;f<filter.length(); f++){
+	    if(dispcheck.contains(filter[f])){ bad = true; break;}
+          }
+        }
+    }
+    
     //See if it failed any checks
     if(bad){ uList.removeAt(i); i--; }
     else{
@@ -510,7 +589,7 @@ void Backend::readSystemUsers(){
       homedirList << uList[i].section(":",5,5).simplified();
       usershellList << uList[i].section(":",6,6).simplified();
     }
-   }
+   } //end loop over uList
   }else{ 
     //Get all the users from the file "/etc/passwd"
     QFile PWF("/etc/passwd");
@@ -525,12 +604,12 @@ void Backend::readSystemUsers(){
   //Remove all users that have:
   for(int i=0; i<uList.length(); i++){
     bool bad = false;
-    // "nologin" as their shell
-    if(uList[i].section(":",6,6).contains("nologin")){bad=true;}
-    // "nonexistent" as their user directory
-    else if(uList[i].section(":",5,5).contains("nonexistent")){bad=true;}
-    // uid > 1000
-    else if(uList[i].section(":",2,2).toInt() < 1000){bad=true;}
+    // Shell Checks
+    if(uList[i].section(":",6,6).contains("nologin") || uList[i].section(":",6,6).isEmpty() || !QFile::exists(uList[i].section(":",6,6)) ){bad=true;}
+    // User Home Dir
+    else if(uList[i].section(":",5,5).contains("nonexistent") || uList[i].section(":",5,5).contains("/empty") || uList[i].section(":",5,5).isEmpty() ){bad=true;}
+    // uid > 0
+    else if(uList[i].section(":",2,2).toInt() < 1){bad=true;} //don't show the root user
 
     //See if it failed any checks
     if(bad){ uList.removeAt(i); i--; }

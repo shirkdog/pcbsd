@@ -15,7 +15,7 @@ alias ls	ls -G
 # A righteous umask
 umask 22
 
-set path = (/usr/local/share/pcbsd/bin /sbin /bin /usr/sbin /usr/bin /usr/games /usr/pbi/bin /usr/local/sbin /usr/local/bin $HOME/bin)
+set path = (/sbin /bin /usr/sbin /usr/bin /usr/games /usr/local/sbin /usr/local/bin $HOME/bin)
 
 setenv	CLICOLOR true
 setenv	EDITOR	vi
@@ -54,6 +54,8 @@ endif
 # Enable colors and such for git diffs
 setenv MORE "-erX"
 
-# Set VIM as default
-alias vi "vim"
-
+# See if we have VIM installed
+if ( -e /usr/local/bin/vim ) then
+	# Set VIM as default
+	alias vi "vim"
+endif

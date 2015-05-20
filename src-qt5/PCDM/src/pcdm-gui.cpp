@@ -22,6 +22,7 @@ PCDMgui::PCDMgui() : QMainWindow()
     this->setObjectName("PCDM-background");
     this->setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
     this->setCentralWidget(new QWidget(this));
+    QApplication::setActiveWindow(this);
     //Load the Theme
     loadTheme();
     //Create the base widgets for the window and make sure they cover one screen at a time
@@ -29,7 +30,12 @@ PCDMgui::PCDMgui() : QMainWindow()
     //Create the GUI based upon the current Theme
     createGUIfromTheme();
     //Now make sure that the login widget has keyboard focus
-    loginW->resetFocus();
+    //loginW->resetFocus();
+    loginW->activateWindow();
+    pcTimer = new QTimer(this);
+	pcTimer->setInterval(15000); //every 15 seconds
+	connect(pcTimer, SIGNAL(timeout()), this, SLOT(LoadAvailableUsers()) );
+    if(!pcAvail.isEmpty()){ pcTimer->start(); } //LoadAvailableUsers was already run once
 
 }
 
@@ -66,6 +72,9 @@ void PCDMgui::createGUIfromTheme(){
       leftscreen = screens[i];
     }
   }
+  //Define the default icon size
+  int perc = qRound(leftscreen->height()*0.035); //use 3.5% of the screen height
+  defIconSize = QSize(perc,perc);
   //Set the background image
   if(DEBUG_MODE){ qDebug() << "Setting Background Image"; }
   if( currentTheme->itemIsEnabled("background") ){
@@ -85,7 +94,7 @@ void PCDMgui::createGUIfromTheme(){
   
   //get the default translation directory
   if(DEBUG_MODE){ qDebug() << "Load Translations"; }
-  translationDir = "/usr/local/share/PCDM/i18n/";
+  translationDir = "/usr/local/share/pcbsd/i18n/";
   //Fill the translator
   m_translator = new QTranslator();
   //Create the Toolbar
@@ -117,7 +126,9 @@ void PCDMgui::createGUIfromTheme(){
     else if(tstyle=="textundericon"){ toolbar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon); }
     else{ toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly); } //default to icon only
     
-    toolbar->setIconSize( currentTheme->itemIconSize("toolbar") ); //use theme size
+    QSize tmpsz = currentTheme->itemIconSize("toolbar");
+    if(!tmpsz.isValid()){ tmpsz = defIconSize; }
+    toolbar->setIconSize( tmpsz ); //use theme size
     toolbar->setFocusPolicy( Qt::NoFocus );
   //Populate the Toolbar with items (starts at leftmost/topmost)
     //----Virtual Keyboard
@@ -186,23 +197,38 @@ void PCDMgui::createGUIfromTheme(){
     //Username/Password/Login widget
     if(DEBUG_MODE){ qDebug() << " - Create Login Widget"; }
     loginW = new LoginWidget;
-    loginW->setUsernames(Backend::getSystemUsers()); //add in the detected users
+    /*loginW->setUsernames(Backend::getSystemUsers()); //add in the detected users
     QString lastUser = Backend::getLastUser();
     if(!lastUser.isEmpty()){ //set the previously used user
     	loginW->setCurrentUser(lastUser); 
-    } 
+    }*/
     //Set Icons from theme
     tmpIcon = currentTheme->itemIcon("login");
+    tmpsz = currentTheme->itemIconSize("login");
+    if(!tmpsz.isValid()){ tmpsz = defIconSize; }
     if(!QFile::exists(tmpIcon) || tmpIcon.isEmpty() ){ tmpIcon=":/images/next.png"; }
-    loginW->changeButtonIcon("login",tmpIcon, currentTheme->itemIconSize("login"));
+    loginW->changeButtonIcon("login",tmpIcon, tmpsz);
+    tmpIcon = currentTheme->itemIcon("anonlogin");
+    tmpsz = currentTheme->itemIconSize("login");
+    if(!tmpsz.isValid()){ tmpsz = defIconSize; }
+    if(!QFile::exists(tmpIcon) || tmpIcon.isEmpty() ){ tmpIcon=":/images/next-stealth.png"; }
+    loginW->changeButtonIcon("anonlogin", tmpIcon, tmpsz);
     tmpIcon = currentTheme->itemIcon("user");
     slotUserChanged(loginW->currentUsername()); //Make sure that we have the correct user icon
     tmpIcon = currentTheme->itemIcon("password");
+    tmpsz = currentTheme->itemIconSize("password");
+    if(!tmpsz.isValid()){ tmpsz = defIconSize; }
     if(!QFile::exists(tmpIcon) || tmpIcon.isEmpty() ){ tmpIcon=":/images/password.png"; }
-    loginW->changeButtonIcon("pwview",tmpIcon, currentTheme->itemIconSize("password"));
+    loginW->changeButtonIcon("pwview",tmpIcon, tmpsz);
+    tmpIcon = currentTheme->itemIcon("encdevice");
+    tmpsz = currentTheme->itemIconSize("device");
+    if(!tmpsz.isValid()){ tmpsz = defIconSize; }
+    if(!QFile::exists(tmpIcon) || tmpIcon.isEmpty() ){ tmpIcon=":/images/usbdevice.png"; }
+    loginW->changeButtonIcon("device", tmpIcon, tmpsz);
     //Enable/disable the password view functionality
     loginW->allowPasswordView( Config::allowPasswordView() );
     loginW->allowUserSelection( Config::allowUserSelection() );
+    loginW->allowAnonLogin( Config::allowAnonLogin() );
     //Add item to the grid
     grid->addWidget( loginW, currentTheme->itemLocation("login","row"), \
                       currentTheme->itemLocation("login","col"), \
@@ -216,13 +242,16 @@ void PCDMgui::createGUIfromTheme(){
     
     //----Desktop Environment Switcher
     if(simpleDESwitcher){
-      loginW->setDesktopIconSize(currentTheme->itemIconSize("desktop"));
+      tmpsz = currentTheme->itemIconSize("desktop");
+      if(!tmpsz.isValid()){ tmpsz = defIconSize; }
+      loginW->setDesktopIconSize(tmpsz);
     }else{
       if(DEBUG_MODE){ qDebug() << " - Create DE Switcher"; }
       //Create the switcher
       deSwitcher = new FancySwitcher(this, !currentTheme->itemIsVertical("desktop") );
-      QSize deSize = currentTheme->itemIconSize("desktop");
-      deSwitcher->setIconSize(deSize.height());
+      tmpsz = currentTheme->itemIconSize("desktop");
+      if(!tmpsz.isValid()){ tmpsz = defIconSize; }
+      deSwitcher->setIconSize(tmpsz.height());
       tmpIcon = currentTheme->itemIcon("nextde");
       if( !tmpIcon.isEmpty() && QFile::exists(tmpIcon) ){ deSwitcher->changeButtonIcon("forward", tmpIcon); }
       tmpIcon = currentTheme->itemIcon("previousde");
@@ -255,6 +284,9 @@ void PCDMgui::createGUIfromTheme(){
     
   //Now translate the UI and set all the text
   if(DEBUG_MODE){ qDebug() << " - Fill GUI with data"; }
+  //retranslateUi();
+  LoadAvailableUsers(); //Note: this is the first time it is run
+  if(DEBUG_MODE){ qDebug() << " - Translate GUI"; }
   retranslateUi();
   if(DEBUG_MODE){ qDebug() << "Done with initialization"; }
 
@@ -292,6 +324,7 @@ void PCDMgui::fillScreens(){
       }*/
     }
     this->setGeometry(0,0,wid,high);
+    this->activateWindow();
     QCursor::setPos( DE->screenGeometry(0).center() );	  
 }
 
@@ -304,6 +337,12 @@ void PCDMgui::slotStartLogin(QString displayname, QString password){
   }else{
     desktop = deSwitcher->currentItem();
   }
+  QString devPassword;
+  bool anonymous = loginW->isAnonymous();
+  if(!anonymous && pcCurrent.contains(username)){
+    //personacrypt user - also pull device password
+    devPassword = loginW->currentDevicePassword();
+  }
   QLocale currLocale = this->locale();
   QString lang = currLocale.name();
   //Disable user input while confirming login
@@ -311,7 +350,7 @@ void PCDMgui::slotStartLogin(QString displayname, QString password){
   if(!simpleDESwitcher){ deSwitcher->setEnabled(false); }
   toolbar->setEnabled(false);
   //Try to login
-  emit xLoginAttempt(username, password, desktop, lang);
+  emit xLoginAttempt(username, password, desktop, lang , devPassword,anonymous);
   //Return signals are connected to the slotLogin[Success/Failure] functions
   
 }
@@ -350,7 +389,9 @@ void PCDMgui::slotUserChanged(QString newuser){
     QString tmpIcon = Backend::getUserHomeDir(newuser) + "/.loginIcon.png";
     if(!QFile::exists(tmpIcon) ){ tmpIcon= currentTheme->itemIcon("user"); }
     if(!QFile::exists(tmpIcon) || tmpIcon.isEmpty() ){ tmpIcon=":/images/user.png"; }
-    loginW->changeButtonIcon("display",tmpIcon, currentTheme->itemIconSize("user"));
+    QSize tmpsz = currentTheme->itemIconSize("user");
+    if(!tmpsz.isValid()){ tmpsz = defIconSize; }
+    loginW->changeButtonIcon("display",tmpIcon, tmpsz);
   }
 }
 
@@ -377,7 +418,7 @@ void PCDMgui::slotShutdownComputer(){
 
   if(ret == QMessageBox::Yes){
     Backend::log("PCDM: Shutting down computer");
-    system("shutdown -p now");
+    system("shutdown -po now");
     QCoreApplication::exit(1); //flag that this is not a normal GUI close
   }
 }
@@ -393,7 +434,7 @@ void PCDMgui::slotRestartComputer(){
 
   if(ret == QMessageBox::Yes){
     Backend::log("PCDM: Restarting computer");
-    system("shutdown -r now");
+    system("shutdown -ro now");
     QCoreApplication::exit(1); //flag that this is not a normal GUI close
   }
 }
@@ -401,6 +442,7 @@ void PCDMgui::slotRestartComputer(){
 void PCDMgui::slotClosePCDM(){
   system("killall -9 xvkbd"); //be sure to close the virtual keyboard
   for(int i=0; i<screens.length(); i++){ screens[i]->close(); } //close all the other screens
+  //QProcess::execute("touch /tmp/.PCDMstop"); //turn off the daemon as well
   QCoreApplication::exit(0);
   close();
 }
@@ -464,6 +506,59 @@ void PCDMgui::slotLocaleChanged(QString langCode){
   Backend::saveDefaultSysEnvironment(langCode,kMod,kLay,kVar);
 }
 
+void PCDMgui::LoadAvailableUsers(){
+  if(DEBUG_MODE){ qDebug() << "Update Users:"; }
+  if(pcAvail.isEmpty()){ pcAvail = Backend::getRegisteredPersonaCryptUsers(); }
+  //if(sysAvail.isEmpty()){ sysAvail = Backend::getSystemUsers(false); } //make sure to get usernames, not real names
+  //qDebug() << "Loading Users:" << pcAvail << sysAvail << pcCurrent;
+  QStringList userlist = Backend::getSystemUsers(false);
+  //qDebug() << " - System:" << userlist;
+  QString lastUser;
+  if(!pcAvail.isEmpty()){ 
+    QStringList pcnow = Backend::getAvailablePersonaCryptUsers(); 
+    if(DEBUG_MODE){ qDebug() << "PC (avail, now):" << pcAvail << pcnow; }
+    if(pcnow.length() > pcCurrent.length()){
+      //New personacrypt user available - switch to that
+      for(int i=0; i<pcnow.length(); i++){
+        if( !pcCurrent.contains(pcnow[i]) ){ lastUser = pcnow[i]; break; }
+      }
+    }
+    if(DEBUG_MODE){ qDebug() << " - Now:" << pcnow << lastUser; }
+    //Start with the system users
+    //userlist = sysAvail; //personacrypt users will always be included in the system users
+    for(int i=0; i<pcAvail.length(); i++){
+      if(!pcnow.contains(pcAvail[i]) && !Config::allowAnonLogin()){
+        //Device is not connected - hide this user (no anonymous logins either)
+	userlist.removeAll(pcAvail[i]);
+      }
+    }
+    pcCurrent = pcnow; //for comparison later
+    //Need to convert all the usernames into the Display Names now
+    for(int i=0; i<userlist.length(); i++){
+      if(pcnow.contains(userlist[i])){
+	//Device connected - put the special flag on the end
+        userlist[i] = Backend::getDisplayNameFromUsername(userlist[i])+"::::personacrypt";
+      }else{
+	userlist[i] = Backend::getDisplayNameFromUsername(userlist[i]);
+      }
+    }
+  }else{
+    userlist = Backend::getSystemUsers(); //Just pull the entire display name list
+  }
+  if(DEBUG_MODE){ qDebug() << "UserList (names):" << userlist << sysAvail; }
+  //Add the usernames to the login widget (if different)
+  if(userlist != sysAvail || sysAvail.isEmpty() ){
+    loginW->setUsernames(userlist); //add in the detected users
+    sysAvail = userlist; //save for later
+    //Whenever we reset the internal list, also need to reset which user has focus
+    if(lastUser.isEmpty()){ lastUser = Backend::getLastUser(); }
+    if(!lastUser.isEmpty()){ //set the previously used user
+    	loginW->setCurrentUser(Backend::getDisplayNameFromUsername(lastUser)); 
+    }	  
+  }
+  
+}
+
 void PCDMgui::slotChangeKeyboardLayout(){
   //Fill a couple global variables
   QStringList kModels = Backend::keyModels();
@@ -509,18 +604,25 @@ void PCDMgui::retranslateUi(){
     systemButton->setMenu(systemMenu);
   //The main login widget
   if(hostname.isEmpty()){
+    if(DEBUG_MODE){ qDebug() << "Finding Hostname..."; }
     //Find the system hostname
     hostname = pcbsd::Utils::runShellCommand("hostname").join(" ").simplified();
+    if(DEBUG_MODE){ qDebug() << " - Host:" << hostname; }
     loginW->displayHostName(hostname);	  
   }
+  if(DEBUG_MODE){ qDebug() << "Translate Login Widget"; }
   loginW->retranslateUi();
   
   //The desktop switcher
   
     //Get the new desktop list (translated)
-    QStringList deList = Backend::getAvailableDesktops();
-    QString lastDE = Backend::getLastDE(loginW->currentUsername());
-    //Organize the desktop list alphabetically
+    QStringList deList = Backend::getAvailableDesktops(); //priority ordered
+    QString lastDE;
+    if(!loginW->currentUsername().isEmpty()){ lastDE = Backend::getLastDE(loginW->currentUsername()); }
+    if(DEBUG_MODE){ qDebug() << "DE's:" << deList << lastDE; }
+    if(lastDE.isEmpty()){ lastDE = deList[0]; }
+    //Organize the desktop list alphabetically by filename
+    deList.removeDuplicates();
     QStringList DEL;
     for(int i=0; i<deList.length(); i++){
       //Check the icon
@@ -529,7 +631,6 @@ void PCDMgui::retranslateUi(){
         if( !QFile::exists(deIcon) ){ deIcon = ":/images/desktop.png"; }
       QString entry = deList[i] +":::"+deIcon+":::"+Backend::getDesktopComment(deList[i]);
       DEL << entry;
-      if(lastDE.isEmpty()){ lastDE = deList[i]; } //grab the highest-priority DE if empty
     }
     DEL.sort(); //make it alphabetical
     //Now fill the switcher
@@ -539,6 +640,7 @@ void PCDMgui::retranslateUi(){
 	//Now add the item
 	deSwitcher->addItem( DEL[i].section(":::",0,0), DEL[i].section(":::",1,1), DEL[i].section(":::",2,2) );
       }
+      if(DEBUG_MODE){ qDebug() << "Last used DE:" << lastDE; }
       //Set the switcher to the last used desktop environment
       if( !lastDE.isEmpty() ){ deSwitcher->setCurrentItem(lastDE); }
 
@@ -550,8 +652,10 @@ void PCDMgui::retranslateUi(){
 	deIcons << DEL[i].section(":::",1,1);
 	deInfo << DEL[i].section(":::",2,2);
       }
+      if(DEBUG_MODE){ qDebug() << "Loading DE's into the login widget"; }
       loginW->setDesktops(deNames, deIcons, deInfo);
       //Set the switcher to the last used desktop environment
+      if(DEBUG_MODE){ qDebug() << "Last used DE:" << lastDE; }
       loginW->setCurrentDE(lastDE);
     }
 

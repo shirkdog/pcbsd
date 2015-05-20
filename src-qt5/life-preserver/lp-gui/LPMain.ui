@@ -83,7 +83,7 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="tab_status">
        <attribute name="icon">
@@ -375,7 +375,7 @@
      <x>0</x>
      <y>0</y>
      <width>459</width>
-     <height>20</height>
+     <height>19</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -402,8 +402,19 @@
      </property>
      <addaction name="actionPools_2"/>
     </widget>
+    <widget class="QMenu" name="menuEnable_Offsite_Backups">
+     <property name="title">
+      <string>Enable Offsite Backups</string>
+     </property>
+     <property name="icon">
+      <iconset resource="lPreserve.qrc">
+       <normaloff>:/images/upload.png</normaloff>:/images/upload.png</iconset>
+     </property>
+     <addaction name="actionPools_3"/>
+    </widget>
     <addaction name="menuManage_Pool"/>
     <addaction name="menuUnmanage_Pool"/>
+    <addaction name="menuEnable_Offsite_Backups"/>
     <addaction name="separator"/>
     <addaction name="action_SaveKeyToUSB"/>
     <addaction name="separator"/>
@@ -471,10 +482,31 @@
      </property>
      <addaction name="actionSnapshots"/>
     </widget>
+    <widget class="QMenu" name="menuStart_Replication">
+     <property name="title">
+      <string>Start Replication</string>
+     </property>
+     <property name="icon">
+      <iconset resource="lPreserve.qrc">
+       <normaloff>:/images/upload.png</normaloff>:/images/upload.png</iconset>
+     </property>
+     <addaction name="actionJunk"/>
+    </widget>
+    <widget class="QMenu" name="menuInit_Replications">
+     <property name="title">
+      <string>Re-Initialize Replications</string>
+     </property>
+     <property name="icon">
+      <iconset resource="lPreserve.qrc">
+       <normaloff>:/images/tray-icon-error.png</normaloff>:/images/tray-icon-error.png</iconset>
+     </property>
+     <addaction name="actionJunk_2"/>
+    </widget>
     <addaction name="action_newSnapshot"/>
     <addaction name="menuDelete_Snapshot"/>
     <addaction name="separator"/>
-    <addaction name="actionStart_Replication"/>
+    <addaction name="menuStart_Replication"/>
+    <addaction name="menuInit_Replications"/>
    </widget>
    <widget class="QMenu" name="menuClassic_Backups">
     <property name="title">
@@ -644,13 +676,19 @@
     <string>Stop Scrub</string>
    </property>
   </action>
-  <action name="actionStart_Replication">
-   <property name="icon">
-    <iconset resource="lPreserve.qrc">
-     <normaloff>:/images/upload.png</normaloff>:/images/upload.png</iconset>
-   </property>
+  <action name="actionPools_3">
    <property name="text">
-    <string>Start Replication</string>
+    <string>pools</string>
+   </property>
+  </action>
+  <action name="actionJunk">
+   <property name="text">
+    <string>junk</string>
+   </property>
+  </action>
+  <action name="actionJunk_2">
+   <property name="text">
+    <string>junk</string>
    </property>
   </action>
  </widget>

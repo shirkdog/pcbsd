@@ -1,6 +1,8 @@
 #include "configDlg.h"
 #include "ui_configDlg.h"
 
+#include <QUrl>
+
 ConfigDlg::ConfigDlg(QWidget *parent) : QDialog(parent), ui(new Ui::ConfigDlg()){
   ui->setupUi(this);
   savedChanges = repoChanged = remoteChanged = false;
@@ -123,13 +125,15 @@ void ConfigDlg::SaveConfig(){
     cmds << "mv -f /tmp/pcbsd.conf /usr/local/etc/pcbsd.conf";
     cmds << "chmod 744 /usr/local/etc/pcbsd.conf";
     cmds << "chown root:wheel /usr/local/etc/pcbsd.conf";
+    cmds << "pc-updatemanager syncconf";
     cmds << "syscache startsync"; //resync the syscache info now
   }
   
   if(!cmds.isEmpty()){
     cmds.prepend("#/bin/sh");
     saveFile("/tmp/.appscriptrun.sh", cmds);
-    savedChanges = (0 == QProcess::execute("pc-su /bin/sh /tmp/.appscriptrun.sh") );
+    savedChanges = (0 == QProcess::execute("pc-su \"/bin/sh /tmp/.appscriptrun.sh\"") );
+    //qDebug() << "Result:" << savedChanges << cmds;
     if(QFile::exists("/tmp/appcafe.conf")){ QFile::remove("/tmp/appcafe.conf"); }
     if(QFile::exists("/tmp/pcbsd.conf")){ QFile::remove("/tmp/pcbsd.conf"); }
     QFile::remove("/tmp/.appscriptrun.sh");
@@ -201,7 +205,10 @@ void ConfigDlg::checkOptions(){
     QListWidgetItem *it = ui->listWidget->currentItem();
     if(it!=0 && !cRepo.endsWith("::::"+it->whatsThis()) ){ repoChanged=true; }
   }
-	
+  if( ui->radio_custom->isChecked() && (ui->listWidget->currentRow() < 0) ){
+    repoChanged = false; //Custom chosen, but no repo selected
+  }
+  
   //Check for changes to the remote access config
   if(ui->groupAppCafe->isChecked()){
     if(cEnable){
@@ -218,7 +225,11 @@ void ConfigDlg::checkOptions(){
 }
 
 void ConfigDlg::ApplyClicked(){
+  this->setEnabled(false);
+  QApplication::processEvents();
+  //qDebug() << "Starting Save";
   SaveConfig();
+  qDebug() << "Save Finished:" << savedChanges;
   this->close();
 }
 
@@ -252,10 +263,18 @@ void ConfigDlg::customChanged(){
 void ConfigDlg::addCustom(){
   //Get the name/URL from the user
   QString cURL = QInputDialog::getText(this, tr("New Repo URL"), tr("URL:") );
-  if(cURL.isEmpty()){ return; } //cancelled
+  if(cURL.simplified().isEmpty()){ return; } //cancelled
+  //Make sure this is a valid URL format
+  while( !QUrl(cURL).isValid() || QUrl(cURL).isRelative()  ){
+    cURL = QInputDialog::getText(this, tr("Invalid Repo URL: Try Again"), tr("URL:"), QLineEdit::Normal, cURL);
+    if(cURL.simplified().isEmpty()){ return; }
+  }
+  //Now get a name for this repo
   QString key = QInputDialog::getText(this, tr("New Repo Name"), tr("Name:") );
+  if(key.simplified().isEmpty()){ return; } //cancelled
   while( key.isEmpty() || settings->contains(key) ){
     key = QInputDialog::getText(this, tr("Invalid Name: Try Again"), tr("Name:") );
+    if(key.simplified().isEmpty()){ return; } //cancelled
   }
   settings->setValue(key, cURL);
   QListWidgetItem *item = new QListWidgetItem(key, 0);

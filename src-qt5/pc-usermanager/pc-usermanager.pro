@@ -3,7 +3,7 @@ LANGUAGE        = C++
 QT += core gui widgets
 CONFIG  += qt warn_on release
 
-LIBS += -L/usr/local/lib -lcrypt
+LIBS += -L../libpcbsd  -L/usr/local/lib -lcrypt -lpcbsd-utils
 
 SOURCES += group.cpp \
 	pcbsdusermanager.cpp \
@@ -35,7 +35,7 @@ FORMS   = SimpleDlg.ui \
 
 RESOURCES += pcbsdusermanager.qrc
 
-INCLUDEPATH += /usr/local/include
+INCLUDEPATH += /usr/local/include ../libpcbsd/ui ../libpcbsd/utils
 
 TARGET = pc-usermanager
 target.path = /usr/local/bin/

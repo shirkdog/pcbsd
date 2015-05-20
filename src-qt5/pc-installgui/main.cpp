@@ -4,6 +4,7 @@
 #include <QDesktopWidget>
 #include <QFile>
 #include <QSplashScreen>
+#include <QTextCodec>
 
 #include "installer.h"
 #include "backend.h"
@@ -39,7 +40,8 @@ int main(int argc, char *argv[])
       qDebug() << "Could not find: " << appDir + "/i18n/SysInstaller_" + langCode + ".qm";
       langCode = "";
     }
-
+    QTextCodec::setCodecForLocale( QTextCodec::codecForName("UTF-8") ); //Force Utf-8 compliance
+    
     if ( argc == 2)
     {
       QString flag = argv[1];
@@ -66,12 +68,16 @@ int main(int argc, char *argv[])
 
     Installer w;
 
-
     // Center the installer
     QRect dimensions = QApplication::desktop()->screenGeometry();
     int wid = dimensions.width();     // returns desktop width
     int hig = dimensions.height();    // returns desktop height
-    w.setGeometry((wid/2) - (650/2), (hig/2) - (435/2), 650, 435);
+    QRect wizDimensions = w.geometry();
+    int wizWid = wizDimensions.width(); // Wizard width
+    int wizHig = wizDimensions.height(); // Wizard height
+    qDebug() << "WizWid" << wizWid;
+    qDebug() << "WizHig" << wizHig;
+    w.setGeometry((wid/2) - (wizWid/2), (hig/2) - (wizHig/2), wizWid, wizHig);
 
     // Start the init
     w.initInstall(splash);

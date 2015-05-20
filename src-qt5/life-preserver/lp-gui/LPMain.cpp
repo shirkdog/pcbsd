@@ -52,6 +52,7 @@ LPMain::LPMain(QWidget *parent) : QMainWindow(parent), ui(new Ui::LPMain){
   //Connect the Menu buttons
   connect(ui->menuManage_Pool, SIGNAL(triggered(QAction*)), this, SLOT(menuAddPool(QAction*)) );
   connect(ui->menuUnmanage_Pool, SIGNAL(triggered(QAction*)), this, SLOT(menuRemovePool(QAction*)) );
+  connect(ui->menuEnable_Offsite_Backups, SIGNAL(triggered(QAction*)), this, SLOT(menuSetupISCSI(QAction*)) );
   connect(ui->action_SaveKeyToUSB, SIGNAL(triggered()), this, SLOT(menuSaveSSHKey()) );
   connect(ui->actionClose_Window, SIGNAL(triggered()), this, SLOT(menuCloseWindow()) );
   connect(ui->menuCompress_Home_Dir, SIGNAL(triggered(QAction*)), this, SLOT(menuCompressHomeDir(QAction*)) );
@@ -64,7 +65,8 @@ LPMain::LPMain(QWidget *parent) : QMainWindow(parent), ui(new Ui::LPMain){
   connect(ui->action_stopScrub, SIGNAL(triggered()), this, SLOT(menuStopScrub()) );
   connect(ui->action_newSnapshot, SIGNAL(triggered()), this, SLOT(menuNewSnapshot()) );
   connect(ui->menuDelete_Snapshot, SIGNAL(triggered(QAction*)), this, SLOT(menuRemoveSnapshot(QAction*)) );
-  connect(ui->actionStart_Replication, SIGNAL(triggered()), this, SLOT(menuStartReplication()) );
+  connect(ui->menuStart_Replication, SIGNAL(triggered(QAction*)), this, SLOT(menuStartReplication(QAction*)) );
+  connect(ui->menuInit_Replications, SIGNAL(triggered(QAction*)), this, SLOT(menuInitReplication(QAction*)) );
   //Update the interface
   QTimer::singleShot(0,this,SLOT(updatePoolList()) );
   
@@ -129,11 +131,18 @@ void LPMain::updatePoolList(){
   //Get the currently selected pool (if there is one)
   qDebug() << "Update Pool List";
   QString cPool;
+  QStringList cpoolList;
   if(ui->combo_pools->currentIndex() != -1){ cPool = ui->combo_pools->currentText(); }
+  for(int i=0; i<ui->combo_pools->count(); i++){
+    cpoolList << ui->combo_pools->itemText(i);
+  }
   //Get the list of managed pools
   qDebug() << "[DEBUG] Fetching list of pools";
   QStringList pools = LPBackend::listDatasets();
   QStringList poolsAvail = LPBackend::listPossibleDatasets();
+  for(int i=0; i<pools.length(); i++){
+    if(!cpoolList.contains(pools[i])){ cPool = pools[i]; break; } //new managed pool, activate this one instead
+  }
   //Now put the lists into the UI
   ui->combo_pools->clear();
   if(!pools.isEmpty()){ ui->combo_pools->addItems(pools); }
@@ -161,10 +170,13 @@ void LPMain::updatePoolList(){
   }
   ui->menuManage_Pool->setEnabled( !ui->menuManage_Pool->isEmpty() );
   ui->menuUnmanage_Pool->clear();
+  ui->menuEnable_Offsite_Backups->clear();
   for( int i=0; i<pools.length(); i++){
     ui->menuUnmanage_Pool->addAction(pools[i]);
+    ui->menuEnable_Offsite_Backups->addAction(pools[i]);
   }
   ui->menuUnmanage_Pool->setEnabled( !ui->menuUnmanage_Pool->isEmpty() );
+  ui->menuEnable_Offsite_Backups->setEnabled( !ui->menuEnable_Offsite_Backups->isEmpty() );
   qDebug() << "[DEBUG] Update user menus";
   //Now update the user's that are available for home-dir packaging
   QDir hdir("/usr/home");
@@ -268,7 +280,15 @@ void LPMain::updateTabs(){
 	else{ ui->menuDelete_Snapshot->addAction(snaps[i] + " (" + comment + ")" ); }
     }
     ui->menuDelete_Snapshot->setEnabled( !ui->menuDelete_Snapshot->isEmpty() );
-    ui->actionStart_Replication->setEnabled( !POOLDATA.repHost.isEmpty() );
+    QStringList repHosts = POOLDATA.repHost;
+    ui->menuStart_Replication->clear();
+    ui->menuInit_Replications->clear();
+    for(int i=0; i<repHosts.length(); i++){
+      ui->menuStart_Replication->addAction( repHosts[i] );
+      ui->menuInit_Replications->addAction( repHosts[i] );
+    }
+    ui->menuStart_Replication->setEnabled( !ui->menuStart_Replication->isEmpty() );
+    ui->menuInit_Replications->setEnabled( !ui->menuInit_Replications->isEmpty() );
     //Now update the disk menu items
     ui->menuRemove_Disk->clear();
     ui->menuSet_Disk_Offline->clear();
@@ -410,8 +430,11 @@ void LPMain::openConfigGUI(){
   qDebug() << "Open Configuration UI";
   QString ds = ui->combo_pools->currentText();
   if(ds.isEmpty()){ return; }
+  qDebug() << "Opening Config UI:";
   LPConfig CFG(this);
-  CFG.loadDataset(ds, LPBackend::listReplicationTargets().contains(ds));
+  qDebug() << " - Loading Datasets";
+  CFG.loadDataset(ds, LPBackend::listReplicationTargets().contains(ds), LPBackend::listScrubs().contains(ds));
+  qDebug() << " - Exec";
   CFG.exec();
   //Now check for return values and update appropriately
   bool change = false;
@@ -422,20 +445,47 @@ void LPMain::openConfigGUI(){
     ui->statusbar->clearMessage();
     change = true;
   }
-  if(CFG.remoteChanged){
+
+  if(CFG.scrubChanged){
     change = true;
-    if(CFG.isReplicated){
-      ui->statusbar->showMessage(QString(tr("Configuring replication: %1")).arg(ds),0);
-      qDebug() << "Setting up Replication:" << ds << " Frequency:" << CFG.remoteFreq;
-      LPBackend::setupReplication(ds, CFG.remoteHost, CFG.remoteUser, CFG.remotePort, CFG.remoteDataset, CFG.remoteFreq);
-      QMessageBox::information(this,tr("Reminder"),tr("Don't forget to save your SSH key to a USB stick so that you can restore your system from the remote host later!!"));
+    if(CFG.isScrubSched){
+      ui->statusbar->showMessage(QString(tr("Configuring scrub: %1")).arg(ds),0);
+      qDebug() << "Settings up scrub:" << ds << "Frequency:" << CFG.scrubSchedule << "Day:" << CFG.scrubDay << "Time:" << CFG.scrubTime;
+      LPBackend::setupScrub(ds, CFG.scrubTime, CFG.scrubDay, CFG.scrubSchedule);
     }else{
-      ui->statusbar->showMessage(QString(tr("Removing replication: %1")).arg(ds),0);
-      qDebug() << "Removing Replication:" << ds;
-      LPBackend::removeReplication(ds, CFG.remoteHost);
+      ui->statusbar->showMessage(QString(tr("Removing scrub: %1")).arg(ds),0);
+      qDebug() << "Removing Scrub:" << ds;
+      LPBackend::removeScrub(ds);
     }
     ui->statusbar->clearMessage();
   }
+
+  if(CFG.remoteChanged){
+    change = true;
+    ui->statusbar->showMessage(QString(tr("Configuring replication settings: %1")).arg(ds),0);
+    QApplication::processEvents();
+      //First setup any existing/new replication hosts
+      for(int i=0; i<CFG.remoteHosts.length(); i++){
+        qDebug() << "Setting up Replication:" << ds << "Host:" << CFG.remoteHosts[i].host() << " Frequency:" << CFG.remoteHosts[i].freq();
+	if(CFG.remoteHosts[i].dataset()=="ISCSI"){ qDebug() <<" - skipping ISCSI host"; continue; }
+	if(CFG.newHosts.contains(CFG.remoteHosts[i].host())){
+	  //This is a brand new host - setup the SSH key first
+	  bool ok = LPBackend::setupSSHKey(CFG.remoteHosts[i].host(), CFG.remoteHosts[i].user(), CFG.remoteHosts[i].port());
+	  if(!ok){ continue; } //cancelled for some reason - move on to the next host
+	  else{ QMessageBox::information(this,tr("Reminder"),tr("Don't forget to save your SSH key to a USB stick so that you can restore your system from the remote host later!!")); }
+	}
+        LPBackend::setupReplication(ds, CFG.remoteHosts[i]);
+      }
+      //Now remove any old hosts
+      for(int i=0; i<CFG.remHosts.length(); i++){
+        ui->statusbar->showMessage(QString(tr("Removing replication: %1, Host: %2")).arg(ds, CFG.remHosts[i]),0);
+	QApplication::processEvents();
+        qDebug() << "Removing Replication:" << ds << "Host:" << CFG.remHosts[i];
+        LPBackend::removeReplication(ds, CFG.remHosts[i]);
+      }
+  }
+  ui->statusbar->clearMessage();
+
   //Now update the UI if appropriate
   if(change){
     updateTabs();
@@ -470,6 +520,10 @@ void LPMain::menuAddPool(QAction *act){
 	 LPBackend::setupReplication(dataset, wiz.remoteHost, wiz.remoteUser, wiz.remotePort, wiz.remoteDataset, wiz.remoteTime);     
 	 QMessageBox::information(this,tr("Reminder"),tr("Don't forget to save your SSH key to a USB stick so that you can restore your system from the remote host later!!"));
       }
+      if(wiz.enableScrub){
+      qDebug() << "Settings up scrub:" << dataset << "Frequency:" << wiz.scrubSchedule << "Day:" << wiz.scrubDay << "Time:" << wiz.scrubTime;
+      LPBackend::setupScrub(dataset, wiz.scrubTime, wiz.scrubDay, wiz.scrubSchedule);
+      }
     }
     ui->statusbar->clearMessage();
     //Now update the list of pools
@@ -501,12 +555,18 @@ void LPMain::menuRemovePool(QAction *act){
       if(LPBackend::listReplicationTargets().contains(ds)){ 
         ui->statusbar->showMessage(QString(tr("%1: Disabling Replication")).arg(ds),0);
 	showWaitBox(tr("Disabling Replication"));
-	//Need the replication host
-	QString rhost, junk1,junk3;
-	int junk2, junk4;
-	LPBackend::replicationInfo(ds, rhost, junk1, junk2, junk3, junk4);
-	LPBackend::removeReplication(ds,rhost); 
+	//Need the replication host(s)
+	QList<LPRepHost> rhosts = LPBackend::replicationInfo(ds);
+	for(int i=0; i<rhosts.length(); i++){
+	  LPBackend::removeReplication(ds,rhosts[i].host()); 
+	}
 	ui->statusbar->clearMessage();      
+      }
+      if(LPBackend::listScrubs().contains(ds)){
+        ui->statusbar->showMessage(QString(tr("%1: Disabling Scrubs")).arg(ds),0);
+	showWaitBox(tr("Disabling Scrubs"));
+	LPBackend::removeScrub(ds);
+	ui->statusbar->clearMessage();
       }
       ui->statusbar->showMessage(QString(tr("%1: Disabling Life-Preserver Management")).arg(ds),0);
       showWaitBox(tr("Removing Life Preserver Schedules"));
@@ -547,6 +607,13 @@ void LPMain::menuSaveSSHKey(){
   }else{
     QMessageBox::information(this,tr("Failure"), tr("The public SSH key file could not be copied onto the USB device."));
   }
+}
+
+void LPMain::menuSetupISCSI(QAction *act){
+  QString ds = act->text(); //this is the zpool
+  LPISCSIWizard dlg(this, ds);
+    dlg.exec();
+
 }
 
 void LPMain::menuCloseWindow(){
@@ -776,13 +843,25 @@ void LPMain::menuRemoveSnapshot(QAction *act){
   }
 }
 
-void LPMain::menuStartReplication(){
+void LPMain::menuStartReplication(QAction* act){
   //Get the pool/host as appropriate
   QString pool = ui->combo_pools->currentText();
-  QString host = POOLDATA.repHost;
+  QString host = act->text();
   if(host.isEmpty()){ return; } //invalid
   QString cmd = "lpreserver replicate run %1 %2";
   cmd = cmd.arg(pool, host);
+  QProcess::startDetached(cmd);
+  QMessageBox::information(this, tr("Replication Triggered"), tr("A replication has been queued up for this dataset"));
+}
+
+void LPMain::menuInitReplication(QAction* act){
+  //Get the pool/host as appropriate
+  QString pool = ui->combo_pools->currentText();
+  QString host = act->text();
+  if(host.isEmpty()){ return; } //invalid
+  QString cmd = "lpreserver replicate init %1 %2; lpreserver replicate run %1 %2";
+  cmd = cmd.arg(pool, host);
+  qDebug() << "Running Command:" << cmd;
   QProcess::startDetached(cmd);
   QMessageBox::information(this, tr("Replication Triggered"), tr("A replication has been queued up for this dataset"));
 }

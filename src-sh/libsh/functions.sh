@@ -571,6 +571,12 @@ do_prune_be()
      fi
   fi
 
+  # Shrink MAXBE by one, so that when we add a new one, it matches the real MAXBE
+  MAXBE=`expr $MAXBE - 1`
+  if [ $MAXBE -lt 1 ] ; then
+    MAXBE=1
+  fi
+
   # Check if we need to prune any BEs
   echo "Pruning old boot-environments..."
   bList="`mktemp /tmp/.belist.XXXXXX`"
@@ -579,8 +585,18 @@ do_prune_be()
   snapCount=`cat $bList | grep -e "^beforeUpdate" -e "default" -e "-up-" | awk '{print $1}' | wc -l | awk '{print $1}'`
 
   if [ -z "$snapCount" ] ; then return ; fi
-  if [ $snapCount -lt $MAXBE ] ; then return ; fi
 
+  # Check if this is forced removal of an old BE
+  if [ "$1" = "force" ] ; then
+     # If we only have 3 BE's, return, don't want to prune less than that
+     if [ $snapCount -lt 3 ] ; then
+        return;
+     fi
+     MAXBE=`expr $snapCount - 1`
+  fi
+
+  # If we have less BE than MAX, return
+  if [ $snapCount -lt $MAXBE ] ; then return ; fi
 
   # Reverse the list
   for tmp in $snapList
@@ -676,9 +692,9 @@ update_grub_boot()
   while read zline
   do
      # If we have reached cache / log devices, we can break now
-     echo $zline | grep -q " cache "
+     echo $zline | grep -qw "cache"
      if [ $? -eq 0 ] ; then break ; fi
-     echo $zline | grep -q " log "
+     echo $zline | grep -qw "log"
      if [ $? -eq 0 ] ; then break ; fi
 
      # Only try to stamp disks marked as online
@@ -742,7 +758,7 @@ update_grub_boot()
      disk=`echo $disk | sed 's|.eli||g'`
 
      # Now get the root of the disk
-     disk=`echo $disk | sed 's|p[1-9]$||g' | sed "s|s[1-9][a-z]||g"`
+     disk=`echo $disk | sed 's|p[1-9]$||g' | sed 's|p[1-9][0-9]$||g' | sed "s|s[1-9][a-z]$||g" | sed "s|s[1-9]$||g"`
      if [ ! -e "/dev/${disk}" ] ; then continue; fi
 
      # Re-install GRUB on this disk
@@ -753,36 +769,16 @@ update_grub_boot()
      fi
   done
 
-  # Do the copy of config / modules after we run grub-install, which may update modules
-  for i in `beadm list -a 2>/dev/null | grep "/${BEDS}/" | awk '{print $1}'`
-  do
-    if mount | grep -q "$i on / ("; then
-       continue
-    fi
-    echo -e "Copying grub.cfg to $i...\c" >&2
-    fMnt="/mnt.$$"
-    mkdir $fMnt
-    if ! mount -t zfs ${i} $fMnt ; then
-       echo "WARNING: Failed to update grub.cfg on: ${i}" >&2
-       continue
-    else
-       # Copy grub config and modules over to old dataset
-       # This is done so that newer grub on boot-sector has
-       # matching modules to load from all BE's
-       cp /boot/grub/grub.cfg ${fMnt}/boot/grub/grub.cfg
-       if [ -d "/boot/grub/i386-pc" ] ; then
-         rm -rf ${fMnt}/boot/grub/i386-pc
-         cp -r /boot/grub/i386-pc ${fMnt}/boot/grub/
-       fi
-       if [ -d "/boot/grub/x86_64-efi" ] ; then
-         rm -rf ${fMnt}/boot/grub/x86_64-efi
-         cp -r /boot/grub/x86_64-efi ${fMnt}/boot/grub/
-       fi
-       echo -e "done" >&2
-       umount -f ${fMnt} 2>/dev/null
-    fi
-    rmdir ${fMnt} 2>/dev/null
-  done
-
   return 0
+}
+
+get_root_pool_free_space()
+{
+  local ROOTPOOL=`mount | grep 'on / ' | cut -d '/' -f 1`
+  if [ -z "$ROOTPOOL" ] ; then return ; fi
+  local freeSpace=`zpool list -Hp ${ROOTPOOL} | awk '{print $4}'`
+  if [ ! $(is_num "$freeSpace") ] ; then return ; fi
+  # Convert freespace to Kb
+  freeSpace=`expr $freeSpace / 1024 2>/dev/null`
+  echo "$freeSpace"
 }

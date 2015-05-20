@@ -48,7 +48,7 @@ private slots:
 
     // Disk slots
     void slotDiskCustomizeClicked();
-    void slotSaveDiskChanges(QList<QStringList>, QString, bool, QString, bool);
+    void slotSaveDiskChanges(QList<QStringList>, QString, bool, QString, bool, QString);
 
     // Slots for the installation
     void slotInstallProcFinished( int exitCode, QProcess::ExitStatus status);
@@ -71,7 +71,7 @@ private slots:
     void slotDesktopCustomizeClicked();
     void slotSaveMetaChanges(QStringList);
     void slotChangedMetaPkgSelection();
-    void slotSaveFBSDSettings(QString, QString, QString, QString, QString, QString, bool, bool, bool, QStringList, QStringList);
+    void slotSaveFBSDSettings(QString, QString, QString, QString, QString, QString, bool, bool, QStringList, QStringList);
 
     // Restore-related slots
     void slotSaveRestoreSettings(QStringList);
@@ -172,7 +172,6 @@ private:
     QString fShell;
     QString fHost;
     bool fSSH;
-    bool fSRC;
     bool fPORTS;
     QStringList fNetSettings;
     QStringList getUsersCfgSettings();
@@ -198,8 +197,14 @@ private:
     // Force 4K mode?
     bool force4K;
 
+    // String to override install mode efi/pc
+    QString forceBIOS;
+
     // Running in EFI mode?
     bool efiMode;
+
+    // Is the user doing the default installation option?
+    bool defaultInstall;
 
     // Restore Options
     QStringList restOpts;

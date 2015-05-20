@@ -18,25 +18,30 @@ LoginWidget::LoginWidget(QWidget* parent) : QGroupBox(parent)
   pwVisible = false; //Have the password box hide the input behind dots
   allowPWVisible = true; //Allow the password button to show the password text
   showUsers = true; //Display the available users on the system
+  updating = false; //not currently updating (internal flag for refreshes)
+  allowAnon = false;
 	
   //Create the Grid layout
   QHBoxLayout* hlayout1 = new QHBoxLayout();
   QHBoxLayout* hlayout2 = new QHBoxLayout();
   QHBoxLayout* hlayout3 = new QHBoxLayout();
+  QHBoxLayout* hlayout4 = new QHBoxLayout();
   QVBoxLayout* vlayout = new QVBoxLayout();
   QFormLayout* flayout = new QFormLayout();
   //Create the items
-  userIcon = new QToolButton;
+  userIcon = new QToolButton(this);;
   	QAction* tmp = new QAction(this);
 	userIcon->setDefaultAction( tmp );
 	userIcon->setFocusPolicy(Qt::NoFocus);
-  listUserBig = new QListWidget;
+  listUserBig = new QListWidget(this);
   	listUserBig->setFocusPolicy(Qt::StrongFocus);
   	listUserBig->setSelectionMode(QAbstractItemView::SingleSelection);
-  listUsers = new QComboBox;
+  listUsers = new QComboBox(this);
   	listUsers->setFocusPolicy(Qt::NoFocus); //big one gets keyboard focus instead
-  linePassword = new QLineEdit;
+  linePassword = new QLineEdit(this);
   	linePassword->setFocusPolicy(Qt::StrongFocus);
+  lineDevPassword = new QLineEdit(this);
+	lineDevPassword->setFocusPolicy(Qt::StrongFocus);
   lineUsername = new QLineEdit;
 	lineUsername->setFocusPolicy(Qt::StrongFocus);
   pushLogin = new QToolButton;
@@ -51,10 +56,17 @@ LoginWidget::LoginWidget(QWidget* parent) : QGroupBox(parent)
 	QAction* tmp3 = new QAction(this);
 	pushUserIcon->setDefaultAction( tmp3 );
 	pushUserIcon->setFocusPolicy(Qt::NoFocus);
-  listDE = new QComboBox;
-  deIcon = new QLabel;
-	
+  listDE = new QComboBox(this);
+  deIcon = new QLabel(this);
+  devIcon = new QLabel(this);
+  nousers = new QLabel(this);
+    nousers->setWordWrap(true);
+  checkAnon = new QCheckBox(this);
+    checkAnon->setChecked(false); //always default to disabled
+    checkAnon->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+    
   //Add the items to the grid
+    vlayout->addWidget(nousers);
     //user not yet selected widgets
       hlayout1->addWidget(userIcon);
     vlayout->addLayout(hlayout1);
@@ -64,12 +76,18 @@ LoginWidget::LoginWidget(QWidget* parent) : QGroupBox(parent)
         hlayout3->addWidget(lineUsername);
       flayout->addRow(pushUserIcon, hlayout3);
       flayout->addRow(pushViewPassword, linePassword);
+      flayout->addRow(devIcon, lineDevPassword);
       flayout->addRow(deIcon,listDE);
     vlayout->addSpacing(15);
     vlayout->addLayout(flayout);
     vlayout->addSpacing(20);
       hlayout2->addWidget(pushLogin);
     vlayout->addLayout(hlayout2);
+    //vlayout->addSpacing(10);
+      hlayout4->addStretch();
+      hlayout4->addWidget(checkAnon);
+      hlayout4->addStretch();
+      vlayout->addLayout(hlayout4);
     
   //Setup the Signals/Slots
   connect(pushLogin,SIGNAL(clicked()),this,SLOT(slotTryLogin()));
@@ -79,6 +97,7 @@ LoginWidget::LoginWidget(QWidget* parent) : QGroupBox(parent)
   connect(listUserBig,SIGNAL(itemClicked(QListWidgetItem*)),this,SLOT(slotUserSelected()) );
   connect(listUserBig,SIGNAL(currentRowChanged(int)),this,SLOT(slotUserHighlighted(int)) );
   connect(listDE,SIGNAL(currentIndexChanged(int)),this,SLOT(slotDesktopChanged(int)) );
+  connect(checkAnon, SIGNAL(stateChanged(int)), this, SLOT(slotAnonChanged()) );
   allowPasswordView(allowPWVisible); //setup signal/slots for pushViewPassword
   //Set this layout for the loginWidget
   this->setLayout(vlayout);
@@ -92,32 +111,59 @@ LoginWidget::~LoginWidget(){
 }
 
 void LoginWidget::updateWidget(){
+
+  
   //Setup the visibility/sizes
-  if(userSelected && showUsers){
+  if(listUsers->count() < 1 || idL.isEmpty() ){
+    nousers->setVisible(true);
+    userIcon->setVisible(false);
+    listUserBig->setVisible(false);
+    pushUserIcon->setVisible(false);
+    listUsers->setVisible(false);
+    lineUsername->setVisible(false);
+    linePassword->setVisible(false);
+    pushLogin->setVisible(false);
+    pushViewPassword->setVisible(false); 
+    lineDevPassword->setVisible(false);
+    checkAnon->setVisible(false);
+    devIcon->setVisible(false);
+    listDE->setVisible(false);
+    deIcon->setVisible(false);
+  }else if(userSelected && showUsers){
+    nousers->setVisible(false);
     userIcon->setVisible(false);
     listUserBig->setVisible(false);
     pushUserIcon->setVisible(true);
     listUsers->setVisible(true);
     lineUsername->setVisible(false);
     linePassword->setVisible(true);
+    //qDebug() << "list Data:" << listUsers->currentData();
+    lineDevPassword->setVisible( listUsers->currentData().toString()=="persona" );
+    devIcon->setVisible( listUsers->currentData().toString()=="persona" );
+    checkAnon->setVisible(allowAnon && listUsers->currentData().toString()!="persona");
     pushLogin->setVisible(true);
     pushViewPassword->setVisible(true);
     if( listDE->count() < 1 ){ listDE->setVisible(false); deIcon->setVisible(false); }
     else{ listDE->setVisible(true); deIcon->setVisible(true); }
   }else if(!showUsers){
     //Do not show either of the user selection widgets
+    nousers->setVisible(false);
     userIcon->setVisible(false);
     listUserBig->setVisible(false);
     pushUserIcon->setVisible(true);
     listUsers->setVisible(false);
     lineUsername->setVisible(true);
     linePassword->setVisible(true);
+    checkAnon->setVisible(allowAnon);
+    lineDevPassword->setVisible( true );
+    devIcon->setVisible( true );
     pushLogin->setVisible(true);
     pushViewPassword->setVisible(true);
     if( listDE->count() < 1 ){ listDE->setVisible(false); deIcon->setVisible(false); }
     else{ listDE->setVisible(true); deIcon->setVisible(true); }
   }else{
     //ShowUsers and none selected
+    nousers->setVisible(false);
     userIcon->setVisible(true);
     listUserBig->setVisible(true);
     pushUserIcon->setVisible(false);
@@ -126,18 +172,24 @@ void LoginWidget::updateWidget(){
     linePassword->setVisible(false);
     pushLogin->setVisible(false);
     pushViewPassword->setVisible(false); 
+    lineDevPassword->setVisible(false);
+    checkAnon->setVisible(false);
+    devIcon->setVisible(false);
     listDE->setVisible(false);
     deIcon->setVisible(false);
   }
   if(pwVisible){
-    linePassword->setEchoMode(QLineEdit::Normal);	  
+    linePassword->setEchoMode(QLineEdit::Normal);
+    lineDevPassword->setEchoMode(QLineEdit::Normal);	  
   }else{
     linePassword->setEchoMode(QLineEdit::Password);  	  
+    lineDevPassword->setEchoMode(QLineEdit::Password);  
   }
   retranslateUi();
 }
 
 void LoginWidget::keyPressEvent(QKeyEvent *e){
+  if(nousers->isVisible()){ return; }
   if( (e->key()==Qt::Key_Enter) || (e->key()==Qt::Key_Return) ){
     if(userSelected || !showUsers){
       slotTryLogin();
@@ -157,6 +209,7 @@ void LoginWidget::keyPressEvent(QKeyEvent *e){
 //    PRIVATE SLOTS
 //-------------------------------------
 void LoginWidget::slotUserActivated(){
+    if(updating){ return; } //internally updating - skip signal
     //Toggle the user box as to what is visible
     if(!userSelected){ 
 	slotUserSelected(); 
@@ -170,6 +223,7 @@ void LoginWidget::slotUserActivated(){
 }*/
 
 void LoginWidget::slotUserHighlighted(int row){
+  if(updating){ return; } //internally updating - skip signal
   emit UserChanged(idL[row]);	
 }
 
@@ -198,8 +252,14 @@ void LoginWidget::slotUserSelected(){
   userSelected = true;
   pwVisible = false;
   linePassword->clear(); //make sure the password is cleared if the user is changed
+  lineDevPassword->clear();
+  if(allowAnon){
+    checkAnon->setChecked(false); //reset anonymous login selection on user change
+    slotAnonChanged(); //update icon as necessary
+  }
   updateWidget();
   linePassword->setFocus();
+  qDebug() << "User Selected:" << listUsers->currentText();
   emit UserSelected(listUsers->currentText());
 }
 
@@ -207,6 +267,7 @@ void LoginWidget::slotUserUnselected(){
   userSelected = false;
   pwVisible = false;
   linePassword->clear(); //make sure the password is cleared if the user is changed
+  lineDevPassword->clear();
   updateWidget();
   listUserBig->setFocus();
   emit UserSelected("");
@@ -231,11 +292,21 @@ void LoginWidget::slotDesktopChanged(int index){
   }
 }
 
+void LoginWidget::slotAnonChanged(){
+  //Change the login button icon a bit to reflect the new setting
+  if(checkAnon->isChecked()){
+    pushLogin->setIcon(QIcon(loginAnonIcon));
+  }else{
+    pushLogin->setIcon(QIcon(loginIcon));
+  }
+}
+
 //-----------------------------
 //     PUBLIC FUNCTIONS
 //-----------------------------
 QString LoginWidget::currentUsername(){
-  QString id = listUsers->currentText();
+  QString id;
+  if( listUsers->count()>0 ){ id = listUsers->currentText(); }
   return id;
 }
 
@@ -244,18 +315,30 @@ QString LoginWidget::currentPassword(){
   return pw;
 }
 
+QString LoginWidget::currentDevicePassword(){
+  QString pw = lineDevPassword->text();
+  return pw;	
+}
+
 QString LoginWidget::currentDE(){
   QString de = listDE->currentText();
   return de;
 }
 
+bool LoginWidget::isAnonymous(){
+  return (allowAnon && checkAnon->isChecked());
+}
+
 void LoginWidget::setCurrentUser(QString id){
+  if(idL.isEmpty()){ return; }
+  
   int index = idL.indexOf(id);
   if(index == -1){
     qDebug() << "LoginWidget: Item does not exist -" << id;
   }else{
     listUsers->setCurrentIndex(index);
     listUserBig->setCurrentRow(index);
+    updateWidget();
     emit UserChanged(id);
   }
 }
@@ -271,21 +354,37 @@ void LoginWidget::setCurrentDE(QString de){
 }
 
 void LoginWidget::setUsernames(QStringList uList){
-  if(uList.isEmpty()){ return; }
-  //Make sure that the two user widgets are identical
-  listUsers->clear();
-  listUsers->addItems(uList);
-  listUserBig->clear();
-  listUserBig->addItems(uList);
-  idL.clear();
-  idL = uList; //save for later
-  listUsers->setCurrentIndex(0);
-  listUserBig->setCurrentRow(0);
-  //Automatically select the user if there is only one
-  if(uList.length() == 1){
-    qDebug() << "Single User System Detected";
-    slotUserSelected();	 
+  if(uList.isEmpty()){ 
+    idL.clear();
+    listUsers->clear();
+    listUserBig->clear();
+  }else{
+    updating = true;
+    //Make sure that the two user widgets are identical
+    listUsers->clear();
+    for(int i=0; i<uList.length(); i++){
+      if(uList[i].contains("::::")){ 
+        //This is a special personacrypt user - also needs additional device password
+        listUsers->addItem(uList[i].section("::::",0,0), "persona");  //set internal flag
+        uList[i] = uList[i].section("::::",0,0); //remove this flag for other widgets
+      }else{
+        listUsers->addItem(uList[i], "normal"); //just show this name (nothing special)
+      }
+    }
+    listUserBig->clear();
+    listUserBig->addItems(uList);
+    idL.clear();
+    idL = uList; //save for later
+    listUsers->setCurrentIndex(0);
+    listUserBig->setCurrentRow(0);
+    //Automatically select the user if there is only one
+    updating = false; //done
+    if(uList.length() == 1){
+      //qDebug() << "Single User System Detected";
+      slotUserSelected();	 
+    }
   }
+  updateWidget();
 }
 
 void LoginWidget::setDesktops(QStringList text, QStringList icon, QStringList info){
@@ -311,11 +410,19 @@ void LoginWidget::changeButtonIcon(QString button, QString iconFile, QSize iconS
     userIcon->setIcon(QIcon(iconFile));
     userIcon->setIconSize(iconSize);
   }else if(button.toLower() == "login"){ 
-    pushLogin->setIcon(QIcon(iconFile));
+    loginIcon = iconFile;
+    //pushLogin->setIcon(QIcon(iconFile));
     pushLogin->setIconSize(iconSize);
+    slotAnonChanged();
+  }else if(button.toLower() == "anonlogin"){
+    loginAnonIcon = iconFile;
+    slotAnonChanged();
   }else if(button.toLower() == "pwview"){ 
     pushViewPassword->setIcon(QIcon(iconFile));
     pushViewPassword->setIconSize(iconSize);
+  }else if(button.toLower() == "device"){
+    devIcon->setPixmap( QPixmap(iconFile).scaled(iconSize, Qt::KeepAspectRatio, Qt::SmoothTransformation) );
+    devIcon->resize(iconSize);
   }else{ 
     qDebug() << "LoginWidget: Cannot change the icon for button" << button << " - valid buttons are \"display\", \"login\", and \"pwview\""; 
   }
@@ -338,13 +445,15 @@ void LoginWidget::changeStyleSheet(QString item, QString style){
 
 void LoginWidget::retranslateUi(){
   //Set all the text for the widget (to easily allow changing the locale)
+  nousers->setText(tr("Please connect your PersonaCrypt device to start login procedures."));
   pushUserIcon->setText(tr("Select"));	
-  pushUserIcon->setToolTip(tr("Select an alternate user and clear the password field"));
+    pushUserIcon->setToolTip(tr("Select an alternate user and clear the password field"));
   userIcon->setText(tr("Select"));
-  userIcon->setToolTip(tr("Select this user"));
- 
+    userIcon->setToolTip(tr("Select this user"));
+  checkAnon->setText(tr("Stealth Session"));
+    checkAnon->setToolTip(tr("Use a temporary home directory which is deleted on log out)"));
   pushLogin->setText(tr("Login"));
-  pushLogin->setToolTip(tr("Login to the system with the current user and password"));
+    pushLogin->setToolTip(tr("Login to the system with the current user and password"));
   pushViewPassword->setText(tr("Password"));
   if(allowPWVisible){
     pushViewPassword->setToolTip(tr("Hold to view the currently entered password"));
@@ -354,6 +463,8 @@ void LoginWidget::retranslateUi(){
   listUsers->setToolTip(tr("Available users"));
   listUserBig->setToolTip(tr("Available users"));
   linePassword->setToolTip(tr("Login password for the selected user"));
+  if(showUsers){ lineDevPassword->setToolTip(tr("Device encryption key")); }
+  else{ lineDevPassword->setToolTip(tr("Device encryption key (personacrypt users only)")); }
   listDE->setToolTip(tr("Available desktop environments"));
   //Setup the computer/host name display
   if( hostName.isEmpty() ){
@@ -365,6 +476,7 @@ void LoginWidget::retranslateUi(){
 
 void LoginWidget::resetFocus(QString item){
   //Check for appropriate action if not specified
+  if(idL.isEmpty()){ return; } //no users available
   if(item.isEmpty() && userSelected && showUsers){ item="password"; }
   else if(item.isEmpty() && (!userSelected || !showUsers) ){ item="userlist"; }
   //Set the proper keyboard focus
@@ -393,5 +505,10 @@ void LoginWidget::allowPasswordView(bool allow){
 
 void LoginWidget::allowUserSelection(bool allow){
   showUsers = allow;
+  updateWidget();
+}
+
+void LoginWidget::allowAnonLogin(bool allow){
+  allowAnon = allow;
   updateWidget();
 }

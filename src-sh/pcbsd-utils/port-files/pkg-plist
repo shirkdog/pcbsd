@@ -1,11 +1,15 @@
 bin/about
+bin/de-info
+bin/de-logout
+bin/disable-tor-mode
+bin/enable-tor-mode
+bin/pbreg
 bin/pc-autoupdate
 bin/pc-pkg
 bin/pc-extractoverlay
 bin/pc-updatemanager
 bin/pc-fbsdupdatecheck
 bin/pc-su
-bin/pbreg
 bin/pc-krbconf
 bin/pc-ldapconf
 bin/pc-nssconf
@@ -14,15 +18,16 @@ bin/pc-pamconf
 bin/pc-sambaconf
 bin/pc-adctl
 bin/pc-ldapctl
-bin/de-info
-bin/de-logout
 bin/pc-thinclient
 bin/pc-xdgutil
 bin/pc-firstgui
 bin/pc-runxgui
 bin/pc-checkxdisplay
 bin/pc-installdialog
+bin/pc-sysconfig
+bin/pc-sysconfig-daemon
 bin/pc-systemflag
+bin/personacrypt
 bin/restamp-grub
 sbin/pc-sysinstall
 share/pc-sysinstall/examples/pcinstall.cfg.upgrade
@@ -94,7 +99,7 @@ share/pc-sysinstall/doc/help-disk-list
 share/pc-sysinstall/doc/help-index
 share/pc-sysinstall/doc/help-disk-size
 share/pc-sysinstall/doc/help-start-autoinstall
-share/pcbsd/bin/pkg
+share/pcbsd/conf/freebsd-update.conf
 share/pcbsd/conf/pcbsd-mirrors
 share/pcbsd/conf/pbi-mirror
 share/pcbsd/conf/pkg-mirror
@@ -104,6 +109,12 @@ share/pcbsd/conf/prune-port-files
 share/pcbsd/conf/desktop-excludes
 share/pcbsd/conf/server-excludes
 share/pcbsd/conf/linux-compat-version
+share/pcbsd/conf/loader.conf.pcbsd
+share/pcbsd/conf/loader.conf.trueos
+share/pcbsd/conf/ntpd.conf
+share/pcbsd/conf/rc.conf.pcbsd
+share/pcbsd/conf/smb4.conf
+share/pcbsd/conf/torrc
 share/pcbsd/distfiles/desktop-overlay.txz
 share/pcbsd/distfiles/port-overlay.txz
 share/pcbsd/distfiles/server-overlay.txz
@@ -190,11 +201,14 @@ share/pcbsd/pc-updatemanager/rc-update
 share/pcbsd/pc-updatemanager/rc-doupdate
 share/pcbsd/scripts/mkzfsdir.sh
 share/pcbsd/scripts/reset-firewall
+share/pcbsd/scripts/reset-firewall-tor
 share/pcbsd/scripts/rmzfsdir.sh
 share/pcbsd/scripts/sys-init.sh
 share/pcbsd/version
 etc/pc-activedirectory.conf
 etc/pc-ldap.conf
+etc/pcupdate.d/post/README
+etc/pcupdate.d/pre/README
 etc/rc.activedirectory
 etc/rc.ldap
 etc/rc.d/pc-activedirectory
@@ -203,37 +217,10 @@ etc/rc.d/pc-kinit
 etc/rc.d/pc-nsswitch
 etc/rc.d/pc-pam
 etc/rc.d/pc-samba
+etc/rc.d/pc-sysconfig
 etc/rc.d/pc-ldap
 etc/rc.d/pc-nssldap
 etc/rc.d/pc-directory
 etc/sudoers.d/pcbsd
 man/man1/pc-systemflag.1.gz
 man/man8/pc-sysinstall.8.gz
-@dirrmtry etc/sudoers.d
-@dirrm share/pc-sysinstall/backend
-@dirrm share/pc-sysinstall/backend-query
-@dirrm share/pc-sysinstall/conf/licenses
-@dirrm share/pc-sysinstall/conf
-@dirrm share/pc-sysinstall/doc
-@dirrm share/pc-sysinstall/examples
-@dirrm share/pc-sysinstall
-@dirrm share/pcbsd/pc-xdgutil/desktop-dirs
-@dirrm share/pcbsd/pc-thinclient/resources/boot
-@dirrm share/pcbsd/pc-thinclient/resources/dhcpd
-@dirrm share/pcbsd/pc-thinclient/resources/root
-@dirrm share/pcbsd/pc-thinclient/resources/etc
-@dirrm share/pcbsd/pc-thinclient/resources/scripts/cardDetect
-@dirrm share/pcbsd/pc-thinclient/resources/scripts
-@dirrm share/pcbsd/pc-thinclient/resources/gdm
-@dirrm share/pcbsd/pc-thinclient/resources/webui
-@dirrm share/pcbsd/pc-thinclient/resources
-@dirrm share/pcbsd/pc-thinclient
-@dirrm share/pcbsd/de-profiles
-@dirrm share/pcbsd/pc-updatemanager/conf
-@dirrm share/pcbsd/pc-updatemanager
-@dirrm share/pcbsd/pc-xdgutil
-@dirrm share/pcbsd/bin
-@dirrm share/pcbsd/conf
-@dirrm share/pcbsd/distfiles
-@dirrm share/pcbsd/scripts
-@dirrm share/pcbsd

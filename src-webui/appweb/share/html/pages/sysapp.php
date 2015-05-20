@@ -33,7 +33,8 @@ defined('DS') OR die('No direct access allowed.');
 <?
 
    } else {
-     echo "<h1>Installed Applications in $jail</h1>";
+     echo "<h1>Installed Applications in $jail (";
+     echo "<a href=\"/?p=exportpbis&jail=__system__\" style=\"text-decoration: underline;\">Export PBI list</a>)</h1>";
 ?>
 
 <br>
@@ -68,6 +69,11 @@ defined('DS') OR die('No direct access allowed.');
    foreach ($pbilist as $pbiorigin)
      // Is this PBIs origin package installed?
      if ( array_search($pbiorigin, $pkglist) !== false) {
+       // Is this PBI just a DEP for another app? If so, skip it
+       $output="";
+       exec("/usr/local/bin/syscache ".escapeshellarg("pkg $jail local $pbiorigin rdependencies"), $output);
+       if ( "$output[0]" != "$SCERROR" )
+          continue;
 
        parse_details($pbiorigin, "$jail", $col, true, false);
        if ( $col == $totalCols )

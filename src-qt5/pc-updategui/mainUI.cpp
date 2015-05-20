@@ -1,6 +1,9 @@
 #include "mainUI.h"
 #include "ui_mainUI.h"
 
+#include "pkgVulDialog.h"
+#include "updHistoryDialog.h"
+
 #include <QProcess>
 #include <QTimer>
 #include <QMessageBox>
@@ -19,7 +22,8 @@ MainUI::MainUI() : QMainWindow(), ui(new Ui::MainUI()){
   connect(ui->list_patches, SIGNAL(itemSelectionChanged()), this, SLOT(patchSelChange()) );
   connect(ui->tool_start_patches, SIGNAL(clicked()), this, SLOT(startPatches()) );
   connect(ui->combo_autosetting, SIGNAL(currentIndexChanged(int)), this, SLOT(autoUpChange()) );
-  connect(watcher, SIGNAL(fileChanged(QString)), this, SLOT(updateLogChanged()) );
+  connect(watcher, SIGNAL(fileChanged(QString)), this, SLOT(watcherChange(QString)) );
+  connect(watcher, SIGNAL(directoryChanged(QString)), this, SLOT(watcherChange(QString)) );
 }
 
 MainUI::~MainUI(){
@@ -35,6 +39,7 @@ void MainUI::InitUI(){ //initialize the UI (widgets, options, menus, current val
   //Initialize the log file watcher
   watcher = new QFileSystemWatcher(this);
     watcher->addPath(UPDATE_LOG_FILE);
+    watcher->addPath("/tmp/.pcbsdflags");
 	
   //Create/set the list of auto-update options	
   QString AUval = pcbsd::Utils::getValFromPCBSDConf("AUTO_UPDATE").simplified().toLower();
@@ -64,6 +69,11 @@ void MainUI::InitUI(){ //initialize the UI (widgets, options, menus, current val
 	
   //Now update the UI based on current system status
   UpdateUI();
+}
+
+void MainUI::watcherChange(QString change){
+  if(change==UPDATE_LOG_FILE){ updateLogChanged(); }
+  else{ UpdateUI(); }
 }
 
 void MainUI::UpdateUI(){ //refresh the entire UI , and system status structure
@@ -231,14 +241,15 @@ void MainUI::updateLogChanged(){ //this is connected to a file watcher for chang
   //Check that the tab is visible(don't want to constantly be reading the file if not visible)
   if(ui->tabWidget->currentWidget()==ui->tab_log){
     QString log = pcbsd::Utils::readTextFile(UPDATE_LOG_FILE);
-    QString clog = ui->text_log->toPlainText();
-    if(clog.length() > log.length() || clog.isEmpty() ){
+    if(log.isEmpty()){ log = pcbsd::Utils::readTextFile(UPDATE_LOG_FILE_PREVIOUS); }
+    //QString clog = ui->text_log->toPlainText();
+    //if(clog.length() > log.length() || clog.isEmpty() ){
       //Completely different log than before - reset the entire view
       ui->text_log->setPlainText(log);
-    }else{
+    //}else{
       //New info to the same log - just append the difference
-      ui->text_log->appendPlainText( log.remove(clog) );
-    }
+      //ui->text_log->appendPlainText( log.remove(clog) );
+    //}
     //Keep it at the bottom (the latest info)
     ui->text_log->verticalScrollBar()->setSliderPosition( ui->text_log->verticalScrollBar()->maximum() );
   }
@@ -261,4 +272,23 @@ void MainUI::autoUpChange(){ //auto-update option changed
   }
   //Now save the value to the PC-BSD conf file
   pcbsd::Utils::setValPCBSDConf("AUTO_UPDATE",val);
+}
+
+void MainUI::on_actionVulnerabilities_triggered()
+{
+    PkgVulDialog* dlg = new PkgVulDialog(this);
+    QTimer::singleShot(0,dlg, SLOT(setupDialog()) );
+    dlg->exec();
+    //
+}
+
+void MainUI::on_actionExit_triggered()
+{
+    close();
+}
+
+void MainUI::on_actionBase_updates_history_triggered()
+{
+    UpdateHistoryDialog* dlg = new UpdateHistoryDialog(this);
+    dlg->execDialog();
 }

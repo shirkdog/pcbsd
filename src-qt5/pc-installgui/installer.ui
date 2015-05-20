@@ -6,9 +6,21 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>650</width>
-    <height>542</height>
+    <width>914</width>
+    <height>724</height>
    </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>800</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="font">
+   <font>
+    <family>Caladea</family>
+    <pointsize>12</pointsize>
+   </font>
   </property>
   <property name="windowTitle">
    <string notr="true">PC-BSD</string>
@@ -17,14 +29,30 @@
    <double>1.000000000000000</double>
   </property>
   <property name="styleSheet">
-   <string notr="true"/>
+   <string notr="true">QWidget{
+  font-family: &quot;Caladea&quot;;
+  font-size: 12pt;
+}
+QStatusBar{
+background-color: rgb(0, 70, 175);
+color: white;
+}</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <property name="styleSheet">
     <string notr="true"/>
    </property>
    <layout class="QGridLayout" name="gridLayout">
-    <property name="margin">
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
      <number>0</number>
     </property>
     <property name="spacing">
@@ -36,10 +64,10 @@
        <bool>false</bool>
       </property>
       <property name="styleSheet">
-       <string notr="true">background-image: url(:/modules/images/backgroundimage.jpg);</string>
+       <string notr="true">background-color: rgb(245, 245, 245);</string>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>3</number>
       </property>
       <widget class="QWidget" name="page">
        <layout class="QGridLayout" name="gridLayout_3">
@@ -91,6 +119,9 @@ background: transparent;</string>
             </property>
             <property name="pixmap">
              <pixmap resource="sysinstaller.qrc">:/PCBSD/images/pcbsd-banner.png</pixmap>
+            </property>
+            <property name="scaledContents">
+             <bool>false</bool>
             </property>
             <property name="alignment">
              <set>Qt::AlignCenter</set>
@@ -237,7 +268,8 @@ background: transparent;</string>
               <string>Change the installation language</string>
              </property>
              <property name="styleSheet">
-              <string notr="true">background-color: rgb(238, 238, 238);</string>
+              <string notr="true">background-color: rgb(238, 238, 238);
+selection-background-color: rgb(160, 160, 160);</string>
              </property>
             </widget>
            </item>
@@ -318,7 +350,7 @@ background: transparent;</string>
            <enum>Qt::Horizontal</enum>
           </property>
           <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
+           <enum>QSizePolicy::Expanding</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -334,7 +366,7 @@ background: transparent;</string>
            <enum>Qt::Horizontal</enum>
           </property>
           <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
+           <enum>QSizePolicy::Expanding</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -426,8 +458,7 @@ background: transparent;</string>
            <bool>false</bool>
           </property>
           <property name="styleSheet">
-           <string notr="true">background-color: rgb(225, 225, 225);
-alternate-background-color: rgb(210, 210, 210);</string>
+           <string notr="true">background: transparent;</string>
           </property>
           <property name="title">
            <string>System Selection</string>
@@ -512,7 +543,7 @@ alternate-background-color: rgb(210, 210, 210);</string>
                <property name="sizeHint" stdset="0">
                 <size>
                  <width>40</width>
-                 <height>20</height>
+                 <height>35</height>
                 </size>
                </property>
               </spacer>
@@ -560,7 +591,7 @@ alternate-background-color: rgb(210, 210, 210);</string>
                <property name="sizeHint" stdset="0">
                 <size>
                  <width>40</width>
-                 <height>20</height>
+                 <height>35</height>
                 </size>
                </property>
               </spacer>
@@ -642,7 +673,7 @@ alternate-background-color: rgb(210, 210, 210);</string>
            <enum>Qt::Horizontal</enum>
           </property>
           <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
+           <enum>QSizePolicy::Expanding</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -674,8 +705,8 @@ alternate-background-color: rgb(210, 210, 210);</string>
            <widget class="QLabel" name="label_5">
             <property name="font">
              <font>
-              <weight>75</weight>
-              <bold>true</bold>
+              <family>Caladea</family>
+              <pointsize>12</pointsize>
              </font>
             </property>
             <property name="styleSheet">
@@ -846,7 +877,7 @@ alternate-background-color: rgb(210, 210, 210);</string>
            <enum>Qt::Horizontal</enum>
           </property>
           <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
+           <enum>QSizePolicy::Expanding</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -866,7 +897,7 @@ alternate-background-color: rgb(210, 210, 210);</string>
            <enum>Qt::Horizontal</enum>
           </property>
           <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
+           <enum>QSizePolicy::Preferred</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -891,10 +922,16 @@ alternate-background-color: rgb(210, 210, 210);</string>
         </item>
         <item row="1" column="1">
          <widget class="QGroupBox" name="groupInstall">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="font">
            <font>
-            <weight>50</weight>
-            <bold>false</bold>
+            <family>Caladea</family>
+            <pointsize>12</pointsize>
            </font>
           </property>
           <property name="styleSheet">
@@ -986,7 +1023,7 @@ alternate-background-color: rgb(210, 210, 210);</string>
            <enum>Qt::Horizontal</enum>
           </property>
           <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
+           <enum>QSizePolicy::Preferred</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -1430,13 +1467,7 @@ alternate-background-color: rgb(210, 210, 210);</string>
     </item>
    </layout>
   </widget>
-  <widget class="QStatusBar" name="statusbar">
-   <property name="styleSheet">
-    <string notr="true">background-color: rgb(0, 70, 175);
-font: 75 9pt &quot;Sans Serif&quot;;
-color: rgb(0, 0, 0);</string>
-   </property>
-  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources>
   <include location="sysinstaller.qrc"/>

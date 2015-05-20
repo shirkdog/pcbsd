@@ -11,6 +11,7 @@
     <file>images/keyboard.png</file>
     <file>images/input-keyboard.png</file>
     <file>images/next.png</file>
+    <file>images/next-stealth.png</file>
     <file>images/info.png</file>
     <file>images/help.png</file>
     <file>images/up.png</file>
@@ -24,6 +25,7 @@
     <file>images/fluxbox.png</file>
     <file>images/openbox.png</file>
     <file>images/nodesktop.png</file>
+    <file>images/usbdevice.png</file>
   </qresource>
   <qresource prefix="samples">
     <file>themes/default/default.theme</file>

@@ -83,6 +83,9 @@
   require("include/globals.php");
   require("include/functions.php");
 
+  // Check if we have updates to display
+  check_update_reboot();
+
   // Do any install / delete requests
   if ( ! empty($_GET["deleteApp"]) )
      queueDeleteApp();
@@ -109,6 +112,12 @@
        $noJails="YES";
        $page = "jails";
     }
+  }
+
+  // Don't echo headers / nav info if we are saving PBI list
+  if ( "$page" == "exportpbis" ) {
+    require("pages/exportpbis.php");
+    exit(0);
   }
 
   // Set some globals for mobile detection

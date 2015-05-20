@@ -20,13 +20,30 @@ QStringList LPBackend::listPossibleDatasets(){
 }
 
 QStringList LPBackend::listDatasets(){
-  QString cmd = "lpreserver listcron";
+  QString cmd = "lpreserver listcron snap";
   QStringList out = LPBackend::getCmdOutput(cmd);
   //Now process the output
   QStringList list;
-  for(int i=2; i<out.length(); i++){ //skip the first two lines (headers)
+  for(int i=0; i<out.length(); i++){
+    //skip the first two lines  and any other headers
+    if(out[i].simplified().isEmpty() || out[i].startsWith("----") || (i < out.length()-1 && out[i+1].startsWith("----") ) ){ continue; }
     QString ds = out[i].section(" - ",0,0).simplified();
-    if(!ds.isEmpty()){ list << ds; }
+    if(!ds.isEmpty() && ds!=out[i]){ list << ds; }
+  }
+
+  return list;
+}
+
+QStringList LPBackend::listScrubs(){
+  QString cmd = "lpreserver listcron scrub";
+  QStringList out = LPBackend::getCmdOutput(cmd);
+  //Now process the output
+  QStringList list;
+  for(int i=0; i<out.length(); i++){ 
+    //skip the first two lines  and any other headers
+    if(out[i].simplified().isEmpty() || out[i].startsWith("----") || (i < out.length()-1 && out[i+1].startsWith("----") ) ){ continue; }
+    QString ds = out[i].section(" - ",0,0).simplified();
+    if(!ds.isEmpty() && ds!=out[i]){ list << ds; }
   }
    
   return list;
@@ -98,7 +115,7 @@ QStringList LPBackend::listCurrentStatus(){
   QStringList list;
   for(int i=2; i<out.length(); i++){ //first 2 lines are headers
     //Format: <dataset> -> <replicationTarget> - <lastsnapshot | NONE> - <lastreplication | NONE>
-    if(out[i].isEmpty()){ continue; }
+    if(out[i].isEmpty() || !out[i].contains(" -> ") ){ continue; }
     QString ds  = out[i].section(" -> ",0,0).simplified();
     QString target = out[i].section(" -> ",1,1).section(" - ",0,0).simplified();
     QString snap = out[i].section(" - ",1,1).simplified();
@@ -142,7 +159,7 @@ bool LPBackend::removeDataset(QString dataset){
 }
 
 bool LPBackend::datasetInfo(QString dataset, int& time, int& numToKeep){
-  QString cmd = "lpreserver listcron";
+  QString cmd = "lpreserver listcron snap";
   QStringList out = LPBackend::getCmdOutput(cmd);
   //Now process the output
   bool ok = false;
@@ -194,6 +211,63 @@ bool LPBackend::revertSnapshot(QString dataset, QString snapshot){
 }
 
 // ==================
+//    Scrub Management
+// ==================
+
+bool LPBackend::setupScrub(QString dataset, int time, int day, QString schedule){
+  //Create the command
+  QString cmd = "";
+  if(schedule == "daily"){
+    cmd = "lpreserver cronscrub "+dataset+" start "+schedule+"@"+QString::number(time);
+  }
+  if((schedule == "weekly") || (schedule == "monthly")){
+    cmd = "lpreserver cronscrub "+dataset+" start "+schedule+"@"+QString::number(day)+"@"+QString::number(time);
+  }
+  int ret = LPBackend::runCmd(cmd);
+  qDebug() << "Lpreserver Command:" << cmd;
+  return (ret == 0);
+}
+
+bool LPBackend::scrubInfo(QString dataset, int& time, int& day, QString& schedule){
+  QString cmd = "lpreserver listcron scrub";
+  QStringList out = LPBackend::getCmdOutput(cmd);
+  //Now process the output
+  bool ok = false;
+  for(int i=0; i<out.length(); i++){
+    if(out[i].section(" - ",0,0).simplified() == dataset){
+      //Get time schedule (in integer format)
+      QString sch = out[i].section(" - ",1,1).simplified();
+      if(sch.startsWith("daily @ ")){
+	schedule = "daily";
+        day = 0;
+        time = sch.section(" @ ",1,1).simplified().toInt();
+      } else
+      if(sch.startsWith("weekly @ ")){
+	schedule = "weekly";
+        day = sch.section(" @ ",1,1).simplified().toInt();
+        time = sch.section(" @ ",2,2).simplified().toInt();
+      } else
+      if(sch.startsWith("monthly @ ")){
+	schedule = "monthly";
+        day = sch.section(" @ ",1,1).simplified().toInt();
+        time = sch.section(" @ ",2,2).simplified().toInt();
+      }
+      ok=true;
+      break;
+    }
+  }
+
+  return ok;
+}
+
+bool LPBackend::removeScrub(QString dataset){
+  QString cmd = "lpreserver cronscrub "+dataset+" stop";
+  int ret = LPBackend::runCmd(cmd);
+
+  return (ret == 0);
+}
+
+// ==================
 //    Replication Management
 // ==================
 bool LPBackend::setupReplication(QString dataset, QString remotehost, QString user, int port, QString remotedataset, int time){
@@ -223,31 +297,34 @@ bool LPBackend::removeReplication(QString dataset, QString remotehost){
   return (ret == 0);
 }
 
-bool LPBackend::replicationInfo(QString dataset, QString& remotehost, QString& user, int& port, QString& remotedataset, int& time){
+QList<LPRepHost> LPBackend::replicationInfo(QString dataset){
   QString cmd = "lpreserver replicate list";
   QStringList out = LPBackend::getCmdOutput(cmd);
-  //Now process the output
-  bool ok = false;
+  //qDebug() << " -- Raw Info:" << out;
+  //Now process the info
+  QList<LPRepHost> repdata;
   for(int i=0; i<out.length(); i++){
-    if(out[i].contains("->") && out[i].startsWith(dataset)){
-      QString data = out[i].section("->",1,1);
-      user = data.section("@",0,0);
-      remotehost = data.section("@",1,1).section("[",0,0);
-      port = data.section("[",1,1).section("]",0,0).toInt();
-      remotedataset = data.section(":",1,1).section(" Time",0,0);
+    //qDebug() << " -- Line:" << out[i];
+    if(out[i].contains(" -> ") && out[i].startsWith(dataset)){
+      //qDebug() << " -- init container";
+      LPRepHost H;
+      QString data = out[i].section(" -> ",1,1);
+      //qDebug() << " -- Eval Line:" << data;
+      H.setUser( data.section("@",0,0) );
+      H.setHost( data.section("@",1,1).section("[",0,0) );
+      H.setPort( data.section("[",1,1).section("]",0,0).toInt() );
+      H.setDataset( data.section(":",1,1).section(" Time",0,0) ); //could be "ISCSI" instead of a dataset
       QString synchro = data.section("Time:",1,1).simplified();
-	if(synchro == "sync"){ time = -1; }
-	else if(synchro =="manual"){ time = -2; }
-	else if(synchro =="hour"){ time = -60; }
-	else if(synchro == "30min"){ time = -30; }
-	else if(synchro == "10min"){ time = -10; }
-	else{ time = synchro.toInt(); }
-      ok = true;
-      break;
+	if(synchro == "sync"){ H.setFreq(-1); }
+	else if(synchro =="manual"){ H.setFreq(-2); }
+	else if(synchro =="hour"){ H.setFreq(-60); }
+	else if(synchro == "30min"){ H.setFreq(-30); }
+	else if(synchro == "10min"){ H.setFreq(-10); }
+	else{ H.setFreq(synchro.toInt()); }
+      repdata << H; //Add this to the output array
     }
   }	  
-   
-  return ok;
+  return repdata;
 }
 
 // ======================
@@ -262,7 +339,7 @@ bool LPBackend::setupSSHKey(QString remoteHost, QString remoteUser, int remotePo
 
 QStringList LPBackend::findValidUSBDevices(){
   //Return format: "<mountpoint> (<device node>")
-  QString cmd = "mount";
+  /*QString cmd = "mount";
   QStringList out = LPBackend::getCmdOutput(cmd);
   //Now process the output
   QStringList list;
@@ -273,7 +350,31 @@ QStringList LPBackend::findValidUSBDevices(){
       list << mountpoint +" ("+devnode+")";
     }
   }
-  return list;
+  return list;*/
+  //Get the list of mounted devices from pc-sysconfig
+  QString ret = LPBackend::getCmdOutput("pc-sysconfig list-mounteddev").join("");
+  if(ret == "[NO INFO]"){ return QStringList(); }
+  QStringList devs = ret.split(", ");
+  QStringList mount = LPBackend::getCmdOutput("mount");
+  QStringList out;
+  //Now get the mountpoints for the devices
+  for(int i=0; i<mount.length(); i++){
+    QString mdev = mount[i].section(" on ",0,0).section("/dev/",1,1);
+    if( devs.contains(mdev) ){
+      out << mount[i].section(" on ",1,1).section("(",0,0).simplified()+" ("+mdev+")";
+    }
+  }
+  return out;
+}
+
+bool LPBackend::isMounted(QString device){
+  qDebug() << "Device mount check not implemented yet:" << device;
+  return false;
+}
+
+bool LPBackend::unmountDevice(QString device){
+  qDebug() << "Device unmounting not implemented yet:" << device;
+  return false;
 }
 
 bool LPBackend::copySSHKey(QString mountPath, QString localHost){
@@ -306,16 +407,6 @@ QStringList LPBackend::listDevices(){
     if(!flist.isEmpty()){ output << devs[i] + " ("+flist[0].section(">",0,0).remove("<").simplified()+")"; }
   }
   return output;
-}
-
-bool LPBackend::isMounted(QString device){
-  qDebug() << "Device mount check not implemented yet:" << device;
-  return false;
-}
-
-bool LPBackend::unmountDevice(QString device){
-  qDebug() << "Device unmounting not implemented yet:" << device;
-  return false;
 }
 
 // ======================

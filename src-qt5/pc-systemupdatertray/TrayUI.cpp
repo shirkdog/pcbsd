@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QInputDialog>
+#include <QPainter>
 
 #include "dialogReminder.h"
 
@@ -54,6 +55,14 @@ TrayUI::TrayUI() : QSystemTrayIcon(){
  cjA = new QWidgetAction(this);
     cjA->setDefaultWidget(checkJails);
   mainMenu->addAction(cjA);
+  mainMenu->addSeparator();
+  torMode = new QCheckBox(tr("Routing through Tor"));
+    torMode->setChecked( CSTAT.InTorMode() );
+    connect(torMode, SIGNAL(clicked()), this, SLOT(slotToggleTorMode()) );
+  tmA = new QWidgetAction(this);
+    tmA->setDefaultWidget(torMode);
+  mainMenu->addAction(tmA);
+  mainMenu->addAction(QIcon(":/images/tor.png"), tr("Check Tor connection"), this, SLOT(slotCheckTorStatus()) );
   mainMenu->addSeparator();
   // - Now the quit option
   tmp = mainMenu->addAction(tr("Quit") );
@@ -149,12 +158,23 @@ void TrayUI::checkForUpdates(){
 }
 
 void TrayUI::UpdateIcon(){
-  this->setIcon( CSTAT.icon() );
+  QIcon ico = CSTAT.icon();
   QString tt = CSTAT.tooltip();
-  //Make any adjustments to the tooltip as necessary
+  //Make any adjustments to the tooltip/icon as necessary
   if(!CSTAT.complete && !CSTAT.updating){
     tt.append("\n\n"+AUNotice); //add info about scheduled/last update
   }
+  if(CSTAT.InTorMode()){
+    //Add the pixmap overlay to the icon (bottom-right quarter of image)
+    QImage img = ico.pixmap(64,64).toImage();
+    QPixmap overlay = QPixmap(":/images/tor.png").scaled(32,32, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QPainter painter(&img);
+      painter.drawPixmap(32,32,overlay);
+    ico = QIcon(QPixmap::fromImage(img));
+    //Add a notice to the tooltip
+    tt.append("\n\n"+tr("(Routing through Tor)"));
+  }
+  this->setIcon(ico);
   this->setToolTip(tt);
 }
 
@@ -272,4 +292,33 @@ void TrayUI::slotClose(){
 void TrayUI::slotSingleInstance(){
   this->show();
     //do nothing else at the moment
+}
+
+void TrayUI::slotToggleTorMode(){
+  //Make sure the menu is hidden when this option is clicked
+  this->contextMenu()->hide();
+  QApplication::processEvents();
+	
+  bool enabled = CSTAT.InTorMode();
+  if(torMode->isChecked() && enabled){ return; } //nothing to do - already in TOR mode
+  else if(!torMode->isChecked() && !enabled){ return; } //nothing to do - already disabled
+  else if(enabled){
+    //Disable TOR mode
+    QProcess::execute("pc-su disable-tor-mode");
+  }else{
+    //Enable TOR mode
+    QString msg = tr("Even while using Tor it is possible to leak your identity. Please read through the Tor FAQ for information on what Tor is and how to use it safely.");
+	  msg = msg+"\n\n"+QString(tr("Tor FAQ: %1")).arg("https://www.torproject.org/docs/faq.html");
+	  msg = msg+"\n\n"+tr("Note: After enabling Tor, it may take a minute or so to connect to the Tor network");
+    if(QMessageBox::Yes == QMessageBox::question(0, tr("Enable Tor?"), msg, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) ){
+      QProcess::execute("pc-su enable-tor-mode");
+    }
+  }
+  //Now reset the checked status based on the success/failure
+  torMode->setChecked( CSTAT.InTorMode() );
+  UpdateIcon();
+}
+
+void TrayUI::slotCheckTorStatus(){
+  QProcess::startDetached("xdg-open https://check.torproject.org");
 }

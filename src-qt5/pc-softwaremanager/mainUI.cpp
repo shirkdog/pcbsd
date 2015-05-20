@@ -54,6 +54,16 @@ MainUI::~MainUI(){
 
 void MainUI::ProgramInit()
 { 
+   if ( QFile::exists("/tmp/.rebootRequired") )
+   {
+     qDebug() << "Reboot required!" ;
+     QMessageBox::warning(this, tr("Reboot Required"),
+                                tr("The system is waiting to reboot from previous updates!\n"
+                                   "Please restart the computer before installing new software."),
+                                QMessageBox::Ok,
+                                QMessageBox::Ok);
+     exit(1);
+   }
    starting = true;
    QSplashScreen *SS = new QSplashScreen(this, QPixmap(":/icons/splash.png"));
      SS->show();
@@ -112,6 +122,7 @@ void MainUI::ProgramInit()
    //slotEnableBrowser();
    SS->finish(this);
    starting = false;
+
 }
 
 void MainUI::showJail(QString jailname){
@@ -225,7 +236,10 @@ void MainUI::on_actionCaution_triggered(){
 //=========
 void MainUI::on_tool_start_updates_clicked(){
   //Check for any pending/running processes first
-  if(PBI->safeToQuit()){
+  // forcibly forward this on to the update manager
+  QProcess::startDetached("pc-updatemanager");
+  return;
+  /*if(PBI->safeToQuit()){
     //Get the update stats and ask for verification to start now
     QMessageBox MB(QMessageBox::Question, tr("Start Updates?"), tr("Are you ready to start performing updates?")+"\n\n"+tr("NOTE: Please close any running applications first!!"), QMessageBox::Yes | QMessageBox::No, this);
       MB.setDetailedText(PBI->updateDetails(VISJAIL));
@@ -246,7 +260,7 @@ void MainUI::on_tool_start_updates_clicked(){
     }
   }else{
     QMessageBox::information(this, tr("Stand-Alone Update Procedure"), tr("The update cannot be run while other operations are pending. Please cancel them and try again.") );
-  }
+  }*/
 }
 
 void MainUI::installOptionChanged(){
@@ -311,9 +325,9 @@ void MainUI::initializeInstalledTab(){
     QMenu *dmenu = actionMenu->addMenu( QIcon(":icons/xdg_desktop.png"), tr("Desktop Icons"));
       dmenu->addAction( QIcon(":icons/add.png"),tr("Add"),this,SLOT(slotActionAddDesktop()) );
       dmenu->addAction( QIcon(":icons/remove.png"),tr("Remove"),this,SLOT(slotActionRemoveDesktop()) );
-    QMenu *lmenu = actionMenu->addMenu( QIcon(":icons/lock.png"), tr("Version Lock") );
-	lmenu->addAction( QIcon(":icons/lock.png"), tr("Lock Current Version"), this, SLOT(slotActionLock()) );
-	lmenu->addAction( QIcon(":icons/unlock.png"), tr("Unlock Application"), this, SLOT(slotActionUnlock()) );
+    //QMenu *lmenu = actionMenu->addMenu( QIcon(":icons/lock.png"), tr("Version Lock") );
+	//lmenu->addAction( QIcon(":icons/lock.png"), tr("Lock Current Version"), this, SLOT(slotActionLock()) );
+	//lmenu->addAction( QIcon(":icons/unlock.png"), tr("Unlock Application"), this, SLOT(slotActionUnlock()) );
     actionMenu->addSeparator();
     actionMenu->addAction( QIcon(":icons/remove.png"), tr("Uninstall"), this, SLOT(slotActionRemove()) );
     actionMenu->addSeparator();
@@ -404,6 +418,7 @@ QStringList MainUI::getCheckedItems(){
 // === SLOTS ===
 void MainUI::slotRefreshInstallTab(){
   //Update the list of installed PBI's w/o clearing the list (loses selections)
+  ui->group_updates->setVisible(false);
    //Get the list we need (in order)
   QStringList installList = PBI->installedList(VISJAIL, ui->actionRaw_Inst_Packages->isChecked(), ui->actionShow_Orphan_Packages->isChecked());
   //qDebug() << "Installed Pkgs:" << installList;
@@ -464,13 +479,13 @@ void MainUI::slotRefreshInstallTab(){
   }
   slotDisplayStats();
   slotCheckSelectedItems();
-  if(PBI->checkForUpdates(VISJAIL)){
+  /*if(PBI->checkForUpdates(VISJAIL)){
     ui->group_updates->setVisible(true);
     if(VISJAIL.isEmpty()){ ui->tool_start_updates->setIcon(QIcon(":icons/view-refresh.png")); }
     else{  ui->tool_start_updates->setIcon(QIcon(":icons/view-jail.png")); }
-  }else{
+  }else{*/
     ui->group_updates->setVisible(false);
-  }
+  //}
   //If the browser app page is currently visible for this app
   if( (ui->stacked_browser->currentWidget()==ui->page_app) && (ui->tabWidget->currentWidget()==ui->tab_browse) ){
     slotGoToApp(cApp);
@@ -576,11 +591,11 @@ void MainUI::slotInstalledAppRightClicked(const QPoint &pt){
       dmenu->addAction( QIcon(":icons/add.png"),tr("Add"),this,SLOT(slotActionAddDesktop()) );
       dmenu->addAction( QIcon(":icons/remove.png"),tr("Remove"),this,SLOT(slotActionRemoveDesktop()) );
   }
-  if(info.isLocked){
+  /*if(info.isLocked){
     contextActionMenu->addAction( QIcon(":icons/unlock.png"), tr("Unlock Application"), this, SLOT(slotActionUnlock()) );
   }else{
     contextActionMenu->addAction( QIcon(":icons/lock.png"), tr("Lock Current Version"), this, SLOT(slotActionLock()) );
-  }
+  }*/
   if(!pending && PBI->safeToRemove(pbiID)){
     //Remove option is only available if not currently pending actions
     contextActionMenu->addSeparator();
@@ -633,17 +648,17 @@ void MainUI::slotActionCancel(){
 }
 
 void MainUI::slotActionLock(){
-  QStringList checkedID = getCheckedItems();
+ /* QStringList checkedID = getCheckedItems();
   if(!checkedID.isEmpty()){
     PBI->lockApp(checkedID, VISJAIL);  
-  }	
+  }*/	
 }
 
 void MainUI::slotActionUnlock(){
-  QStringList checkedID = getCheckedItems();
+  /*QStringList checkedID = getCheckedItems();
   if(!checkedID.isEmpty()){
     PBI->unlockApp(checkedID, VISJAIL);  
-  }	
+  }*/	
 }
 
 void MainUI::slotStartApp(QAction* act){

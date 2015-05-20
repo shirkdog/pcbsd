@@ -6,19 +6,27 @@
 #include <QInputDialog>
 #include <QSplashScreen>
 #include <QGraphicsPixmapItem>
+#include <QScreen>
 
 #include "backend.h"
 #include "../config.h"
 #include "installer.h"
 #include "helpText.h"
 
-Installer::Installer(QWidget *parent) : QMainWindow(parent)
+Installer::Installer(QWidget *parent) : QMainWindow(parent, Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint)
 {
     setupUi(this);
+    //Make sure the window is full-screen (in the background, not foreground)
+    QScreen *scrn = QApplication::primaryScreen();
+    this->setGeometry( scrn->geometry() );
+	
+    //Now start loading the rest of the interface
     labelVersion->setText(tr("Version:") + " " + PCBSDVERSION);
     translator = new QTranslator();
     haveWarnedSpace=false;
     force4K = false;
+    defaultInstall = true;
+    forceBIOS="";
 
     connect(abortButton, SIGNAL(clicked()), this, SLOT(slotAbort()));
     connect(backButton, SIGNAL(clicked()), this, SLOT(slotBack()));
@@ -41,11 +49,10 @@ Installer::Installer(QWidget *parent) : QMainWindow(parent)
     // Init the boot-loader
     bootLoader = QString("GRUB");
 
-    // Init the GPT to no
+    // We use GPT by default now
     loadGPT = true;
 
     // No optional components by default
-    fSRC=false;
     fPORTS=false;
 
     // Load the keyboard info
@@ -276,7 +283,7 @@ bool Installer::autoGenPartitionLayout(QString target, bool isDisk)
 
   // Save 100MiB for EFI FAT16 filesystem
   if ( efiMode )
-    totalSize = totalSize - 100;
+    totalSize = totalSize - 110;
 
   // Setup some swap space
   if ( totalSize > 30000 ) {
@@ -297,7 +304,7 @@ bool Installer::autoGenPartitionLayout(QString target, bool isDisk)
 
   // Add the main zfs pool with standard partitions
   fsType= "ZFS";
-  fileSystem << targetDisk << targetSlice << "/(compress=lz4|atime=off),/tmp(compress=lz4|exec=off|setuid=off),/usr(canmount=off|mountpoint=none),/usr/home(compress=lz4),/usr/jails(compress=lz4),/usr/obj(compress=lz4),/usr/pbi(compress=lz4),/usr/ports(compress=lz4),/usr/src(compress=lz4),/var(canmount=off|atime=on|mountpoint=none),/var/audit(compress=lz4),/var/log(compress=lz4|exec=off|setuid=off),/var/tmp(compress=lz4|exec=off|setuid=off)" << fsType << tmp.setNum(totalSize) << "" << "";
+  fileSystem << targetDisk << targetSlice << "/(compress=lz4|atime=off),/tmp(compress=lz4|setuid=off),/usr(canmount=off|mountpoint=none),/usr/home(compress=lz4),/usr/jails(compress=lz4),/usr/obj(compress=lz4),/usr/ports(compress=lz4),/usr/src(compress=lz4),/var(canmount=off|atime=on|mountpoint=none),/var/audit(compress=lz4),/var/log(compress=lz4|exec=off|setuid=off),/var/mail(compress=lz4),/var/tmp(compress=lz4|exec=off|setuid=off)" << fsType << tmp.setNum(totalSize) << "" << "";
   sysFinalDiskLayout << fileSystem;
   fileSystem.clear();
     
@@ -495,7 +502,7 @@ void Installer::slotDiskCustomizeClicked()
   wDisk->setWindowModality(Qt::ApplicationModal);
   if ( radioRestore->isChecked() )
     wDisk->setRestoreMode();
-  connect(wDisk, SIGNAL(saved(QList<QStringList>, QString, bool, QString, bool)), this, SLOT(slotSaveDiskChanges(QList<QStringList>, QString, bool, QString, bool)));
+  connect(wDisk, SIGNAL(saved(QList<QStringList>, QString, bool, QString, bool, QString)), this, SLOT(slotSaveDiskChanges(QList<QStringList>, QString, bool, QString, bool, QString)));
   wDisk->show();
   wDisk->raise();
 }
@@ -525,12 +532,20 @@ void Installer::slotSaveMetaChanges(QStringList sPkgs)
   textDeskSummary->setText(tr("The following meta-pkgs will be installed:") + "<br>" + selectedPkgs.join("<br>"));
 }
 
-void Installer::slotSaveDiskChanges(QList<QStringList> newSysDisks, QString BL, bool GPT, QString zName, bool zForce )
+void Installer::slotSaveDiskChanges(QList<QStringList> newSysDisks, QString BL, bool GPT, QString zName, bool zForce, QString biosMode )
 {
 
   bootLoader=BL;
   zpoolName = zName; 
   force4K = zForce;
+  forceBIOS=biosMode;
+  defaultInstall = false;
+
+  // Check if we are running in EFI mode
+  if ( forceBIOS == "efi" )
+    efiMode=true;
+  else
+    efiMode=false;
 
   // Save the new disk layout
   loadGPT = GPT;
@@ -645,7 +660,7 @@ void Installer::slotFinished()
   qApp->quit();
 }
 
-void Installer::slotSaveFBSDSettings(QString rootPW, QString name, QString userName, QString userPW, QString shell, QString hostname, bool ssh, bool src, bool ports, QStringList netSettings, QStringList appcafe)
+void Installer::slotSaveFBSDSettings(QString rootPW, QString name, QString userName, QString userPW, QString shell, QString hostname, bool ssh, bool ports, QStringList netSettings, QStringList appcafe)
 {
   fRootPW = rootPW;
   fName = name;
@@ -654,7 +669,6 @@ void Installer::slotSaveFBSDSettings(QString rootPW, QString name, QString userN
   fShell = shell;
   fHost = hostname;
   fSSH = ssh;
-  fSRC = src;
   fPORTS = ports;
   fNetSettings = netSettings;
   appCafeSettings = appcafe;
@@ -698,7 +712,7 @@ void Installer::slotNext()
      wFBSD = new wizardFreeBSD();
      wFBSD->setWindowModality(Qt::ApplicationModal);
      wFBSD->programInit(tOS);
-     connect(wFBSD, SIGNAL(saved(QString, QString, QString, QString, QString, QString, bool, bool, bool, QStringList, QStringList)), this, SLOT(slotSaveFBSDSettings(QString, QString, QString, QString, QString, QString, bool, bool, bool, QStringList, QStringList)));
+     connect(wFBSD, SIGNAL(saved(QString, QString, QString, QString, QString, QString, bool, bool, QStringList, QStringList)), this, SLOT(slotSaveFBSDSettings(QString, QString, QString, QString, QString, QString, bool, bool, QStringList, QStringList)));
      wFBSD->show();
      wFBSD->raise();
      return ;
@@ -720,7 +734,10 @@ void Installer::slotNext()
       if (radioRestore->isChecked() )
 	msg=tr("Start the restore now?");
       else
-	msg=tr("Start the installation now?");
+        if ( defaultInstall )
+	  msg=tr("Start the default Full-Disk installation now?");
+        else
+	  msg=tr("Start the Customized-Disk installation now?");
 
       int ret = QMessageBox::question(this, tr("PC-BSD Installer"),
                                 msg,
@@ -814,18 +831,32 @@ QStringList Installer::getGlobalCfgSettings()
   // Are we doing a restore?
   if ( radioRestore->isChecked() )
   {
-    tmpList << "installMode=zfsrestore";
-    tmpList << "";
-    tmpList << "sshHost=" + restOpts.at(0);
-    tmpList << "sshUser=" + restOpts.at(1);
-    tmpList << "sshPort=" + restOpts.at(2);
-    if ( ! restOpts.at(3).isEmpty() )
-      tmpList << "sshKey=" + restOpts.at(3);
-    tmpList << "zfsProps=" + restOpts.at(4);
-    tmp = restOpts.at(4);
-    tmp.replace(".lp-props-", "");
-    tmp.replace("#", "/");
-    tmpList << "zfsRemoteDataset=" + tmp;
+    // If using an ISCSI file, set those options
+    if ( restOpts.at(0) == "ISCSI" ) {
+      qDebug() << "ISSCI RESTORE MODE!";
+      tmpList << "installMode=zfsrestoreiscsi";
+      tmpList << "iscsiFile=" + restOpts.at(1);
+      QFile iscsipassfile( "/tmp/lp-iscsi-pass" );
+      if ( iscsipassfile.open( QIODevice::WriteOnly ) ) {
+        QTextStream streampass( &iscsipassfile );
+        streampass <<  restOpts.at(2);
+        iscsipassfile.close();
+      }
+      tmpList << "iscsiPass=/tmp/lp-iscsi-pass";
+    } else {
+      tmpList << "installMode=zfsrestore";
+      tmpList << "";
+      tmpList << "sshHost=" + restOpts.at(0);
+      tmpList << "sshUser=" + restOpts.at(1);
+      tmpList << "sshPort=" + restOpts.at(2);
+      if ( ! restOpts.at(3).isEmpty() )
+        tmpList << "sshKey=" + restOpts.at(3);
+      tmpList << "zfsProps=" + restOpts.at(4);
+      tmp = restOpts.at(4);
+      tmp.replace(".lp-props-", "");
+      tmp.replace("#", "/");
+      tmpList << "zfsRemoteDataset=" + tmp;
+    } 
 
     // Using a custom zpool name?
     if ( ! zpoolName.isEmpty() )
@@ -850,13 +881,11 @@ QStringList Installer::getGlobalCfgSettings()
   }
   
   QString distFiles;
-  distFiles="base doc games kernel";
+  distFiles="base doc kernel";
   if ( Arch == "amd64" )
      distFiles+=" lib32";
 
-  // Check for ports / src sources
-  if ( fSRC )
-     distFiles+=" src";
+  // Check for ports
   if ( fPORTS )
      distFiles+=" ports";
 
@@ -1128,7 +1157,7 @@ QStringList Installer::getDiskCfgSettings()
     workingDisk = copyList.at(0).at(0);
     workingSlice = copyList.at(0).at(1);
     tmpSlice = workingSlice;
-    tmpList << "# Disk Setup for " + workingDisk ;
+    tmpList << "# Disk setup for " + workingDisk ;
 
     // Check if this is an install to "Unused Space"
     for (int z=0; z < sysDisks.count(); ++z)
@@ -1326,6 +1355,10 @@ void Installer::startInstall()
      PCSYSINSTALL = "/root/pc-sysinstall/pc-sysinstall";
   else  
      PCSYSINSTALL = "/usr/local/sbin/pc-sysinstall";
+
+  // If the user wants to set UEFI/BIOS mode manually
+  if ( ! forceBIOS.isEmpty() )
+    system("kenv grub.platform='" + forceBIOS.toLatin1() + "'");
 
   QString program = PCSYSINSTALL;
   QStringList arguments;
@@ -1641,10 +1674,6 @@ QStringList Installer::getDeskPkgCfg()
 	}
    }
 
-   // Load EFI packages
-   if ( efiMode )
-      pkgList << "sysutils/grub2-efi";
-
    cfgList << "installPackages=" + pkgList.join(" ");
    return cfgList;
 }
@@ -1875,6 +1904,7 @@ void Installer::slotStartNetworkManager()
 
 void Installer::slotSaveRestoreSettings(QStringList Opts)
 {
+  qDebug() << "slotSaveRestoreSettings";
   restOpts = Opts;
 
   textEditDiskSummary->clear();

@@ -1,5 +1,8 @@
 #include "MainUI.h"
 
+#include <QKeySequence>
+#include <QApplication>
+
 MainUI::MainUI(bool debugmode) : QMainWindow(){
   //Setup UI
   DEBUG = debugmode;
@@ -15,6 +18,7 @@ MainUI::MainUI(bool debugmode) : QMainWindow(){
   QToolBar *tb = this->addToolBar("");
     tb->setMovable(false);
     tb->setFloatable(false);
+    tb->setContextMenuPolicy(Qt::CustomContextMenu); //disable the built-in visibility context menu
     backA = tb->addAction(QIcon(":icons/back.png"), tr("Back"), this, SLOT(GoBack()) );
     forA = tb->addAction(QIcon(":icons/forward.png"), tr("Forward"), this, SLOT(GoForward()) );
     refA = tb->addAction(QIcon(":icons/refresh.png"), tr("Refresh"), this, SLOT(GoRefresh()) );
@@ -38,16 +42,35 @@ MainUI::MainUI(bool debugmode) : QMainWindow(){
     //Setup the menu for this button
     listMenu = new QMenu();
       listMenu->addAction(QIcon(":icons/configure.png"), tr("Configure"), this, SLOT(GoConfigure() ) );
+      listMenu->addAction(QIcon(":icons/search.png"), tr("Search For Text"), this, SLOT(openSearch() ) );
       listMenu->addSeparator();
       listMenu->addAction(QIcon(":icons/close.png"), tr("Close AppCafe"), this, SLOT(GoClose() ) );
     listB->setMenu(listMenu);
-    
+    //Setup the search options
+    group_search = new QFrame(this);
+      group_search->setLayout( new QHBoxLayout() );
+      group_search->layout()->setContentsMargins(2,2,2,2);
+    line_search = new QLineEdit(this);
+      group_search->layout()->addWidget(line_search);
+    tool_search = new QToolButton(this);
+      group_search->layout()->addWidget(tool_search);
+      tool_search->setIcon( QIcon(":icons/search.png") );
+      group_search->layout()->addItem(new QSpacerItem(0,0,QSizePolicy::Expanding, QSizePolicy::Minimum) );
   //Setup the Main Interface
     webview = new QWebView(this);
     this->centralWidget()->layout()->addWidget(webview);
     if(webview->page()==0){ webview->setPage(new QWebPage(webview)); }
     webview->page()->setLinkDelegationPolicy(QWebPage::DelegateAllLinks);
-
+    this->centralWidget()->layout()->addWidget(group_search);
+  
+  //Make sure the search bar is hidden to start with    
+  group_search->setVisible(false);
+    
+  //Create the special keyboard shortcuts
+  QKeySequence key(QKeySequence::Find);
+  ctrlF = new QShortcut( key, this );
+  key = QKeySequence(Qt::Key_Escape);
+  esc = new QShortcut( key, this );
     
   //Connect signals/slots
   connect(webview, SIGNAL(linkClicked(const QUrl&)), this, SLOT(LinkClicked(const QUrl&)) );
@@ -55,6 +78,10 @@ MainUI::MainUI(bool debugmode) : QMainWindow(){
   connect(webview, SIGNAL(loadProgress(int)), this, SLOT(PageLoadProgress(int)) );
   connect(webview, SIGNAL(loadFinished(bool)), this, SLOT(PageDoneLoading(bool)) );
   connect(webview->page()->networkAccessManager(), SIGNAL(sslErrors(QNetworkReply*, const QList<QSslError>&)), this, SLOT( authenticate(QNetworkReply*) ) );
+  connect(tool_search, SIGNAL(clicked()), this, SLOT(GoSearch()) );
+  connect(line_search, SIGNAL(returnPressed()), this, SLOT(GoSearch()) );
+  connect(ctrlF, SIGNAL(activated()), this, SLOT(openSearch()) );
+  connect(esc, SIGNAL(activated()), this, SLOT(closeSearch()) );
   if(DEBUG){
     //connect(webview, SIGNAL(statusBarMessage(const QString&)), this, SLOT(StatusTextChanged(const QString&)) );
     connect(webview->page(), SIGNAL(linkHovered(const QString&, const QString&, const QString&)), this, SLOT(StatusTextChanged(const QString&)) );
@@ -66,6 +93,43 @@ MainUI::MainUI(bool debugmode) : QMainWindow(){
 
 MainUI::~MainUI(){}
 	
+	
+//===============
+//  PRIVATE FUNCTIONS
+//===============
+bool MainUI::sameUrls(QUrl U1, QUrl U2){
+  //qDebug() << "Comparing URLs:" << U1 << U2;
+  if(U1==U2){ return true; }
+  else{
+    //Check the actual strings for differences which can be ignored
+    QString S1 = U1.toString();
+    QString S2 = U2.toString();
+    QString diff;
+    //qDebug() << "Compare Strings:\n- "+S1+"\n- "+S2;
+    if(S2.length() > S1.length()){ 
+      if(S2.startsWith(S1)){ diff = S2.remove(0,S1.length()); }
+      else{ diff = S2.replace(S1,""); }
+    }else{ 
+      if(S1.startsWith(S2)){ diff = S1.remove(0,S2.length()); }
+      else{ diff = S1.replace(S2,""); }
+    }
+    //qDebug() << " -DIFF:" << diff;
+    if(diff.isEmpty()){ return true; } //should never happen because of the earlier check
+    else if(diff==LOCALUI){ return true; } //just the special flag we put in
+    else if(diff.startsWith("&installApp=")){ return true; } //just an install command
+    else if(diff.startsWith("&deleteApp=")){ return true; }// just a remove command
+    return false;
+  }
+}
+
+bool MainUI::actionUrl(QUrl U1){
+  //check for the particular "action" strings in the URL (don't want to repeat them when going forward/back)
+  bool act = false;
+  QString st = U1.toString();
+  act = st.contains("&installApp=") || st.contains("&deleteApp=");
+  return act;
+}
+
 //============
 //  PRIVATE SLOTS
 //============
@@ -108,7 +172,7 @@ void MainUI::PageLoadProgress(int cur){
 }
 
 void MainUI::PageDoneLoading(bool ok){
-  if(DEBUG){ qDebug() << "Done Loading Page:" << ok; }
+  if(DEBUG){ qDebug() << "Done Loading Page:" << ok << webview->url(); }
   progA->setVisible(false);
   backA->setEnabled(webview->history()->canGoBack());
   forA->setEnabled(webview->history()->canGoForward());
@@ -151,16 +215,28 @@ void MainUI::loadHomePage(){
     }
   }
 
+  if( QFile::exists("/tmp/.rebootRequired") ){
+    //System waiting to reboot - put up a notice and disable the web viewer
+    webview->setHtml("<p><strong>"+tr("System needs to reboot to finish applying updates!")+"</strong></p>");
+    backA->setVisible(false);
+    forA->setVisible(false);
+    refA->setVisible(false);
+    stopA->setVisible(false);
+    progA->setVisible(false);
+    return;	  
+  }
+  
   //Load the main page
   baseURL = BASEWEBURL;
   baseURL = baseURL.replace("<port>", port);
   if(usessl){ baseURL = baseURL.replace("http://","https://"); }
   if(DEBUG){ qDebug() << "Base URL:" << baseURL; }
   QString tmpURL = baseURL;
-  if(!AUTHCOMPLETE){
+  if( !AUTHCOMPLETE ){
     //Only perform the authorization if necessary
-    QString authkey = pcbsd::Utils::runShellCommand("pc-su /usr/local/share/appcafe/dispatcher-localauth").join("").simplified();
+    QString authkey = pcbsd::Utils::getLineFromCommandOutput("pc-su /usr/local/share/appcafe/dispatcher-localauth 2>/dev/null").simplified();
     AUTHCOMPLETE = !authkey.isEmpty();
+    if(DEBUG){ qDebug() << "Got Auth Key:" << AUTHCOMPLETE << authkey; }
     if ( authkey.indexOf(":") != -1 )
       authkey = authkey.section(":", 1, 1);
     if(AUTHCOMPLETE){ tmpURL.append("/?setDisId="+authkey); }
@@ -168,16 +244,72 @@ void MainUI::loadHomePage(){
   //Now clear the history (if any)
   
   //Now load the page
-  webview->load( QUrl(tmpURL) );
-  webview->show();
+  if(AUTHCOMPLETE){
+    webview->load( QUrl(tmpURL) );
+    webview->show();
+  }else{
+    //System waiting to reboot - put up a notice and disable the web viewer
+    webview->setHtml("<p><strong>"+tr("You are not authorized to view the AppCafe. Please contact a system administrator for assistance.")+"</strong></p>");
+    backA->setEnabled(false);
+    forA->setEnabled(false);
+    refA->setVisible(false);
+    stopA->setVisible(false);
+    progA->setVisible(false);	  
+  }
+
 }
 
 void MainUI::GoBack(){
+  //Make sure that we skip any repeated history items (automatic page refreshes)
+  //QWebHistoryItem cit = webview->history()->currentItem();
+  if(DEBUG){ qDebug() << "---BACK CLICKED---"; }
+  QList<QWebHistoryItem> bits = webview->history()->backItems(50); //max 50 items
+  //First remove any action URLs (*never* repeat them)
+  for(int i=0; i<bits.length(); i++){
+    if( actionUrl(bits[i].url()) ){ bits.removeAt(i); i--; }
+  }
+  QUrl cpage = webview->url();
+  for(int i=bits.length()-1; i>=0; i--){
+    
+    if( !sameUrls(bits[i].url(),cpage) || !sameUrls(bits[i].url(), bits[i].originalUrl()) ){ //not a page refresh
+      webview->history()->goToItem(bits[i]);
+      return;
+    }
+    if(DEBUG){ qDebug() << "Back History Item Skipped:" << bits[i].url(); }
+  }
+  //fallback in case something above did not work
   webview->back();
 }
 
 void MainUI::GoForward(){
-  webview->forward();
+  QList<QWebHistoryItem> bits = webview->history()->forwardItems(50); //max 50 items
+  //First remove any action URLs (*never* repeat them)
+  for(int i=0; i<bits.length(); i++){
+    if( actionUrl(bits[i].url()) ){ bits.removeAt(i); i--; }
+  }
+  //Now go through and find the proper URL to go to
+  QUrl cit = webview->url(); //current page URL
+  if(DEBUG){ qDebug() << "---FORWARD CLICKED---" << bits.length(); }
+  //Go to the last page-refresh (if any) for the next URL
+  int got = -1; // go to index
+  for(int i=0; i<bits.length() && got<0; i++){ //i=0 is the desired item
+    if( !sameUrls(cit, bits[i].url()) ){
+      got = i; //go to this URL (different from current page)
+      //Now fast forward to the end of the page-refresh chain (if there is one) for this URL
+      for(int j=i+1; j<bits.length(); j++){
+        if( sameUrls( bits[i].url(), bits[j].url()) ){ got = j; }
+	else{ break; }
+      }
+    }else if(i==(bits.length()-1)){
+      got = i; //last item - go ahead and load it
+    }
+    if(DEBUG && got < 0){ qDebug() << "Forward History Item Skipped:" << i << bits[i].url(); }
+  }
+  //fallback in case something above did not work
+  if(got<0){ webview->forward(); }
+  else{ 
+    webview->history()->goToItem(bits[got]); 
+  }
 }
 
 void MainUI::GoRefresh(){
@@ -197,4 +329,27 @@ void MainUI::GoConfigure(){
   ConfigDlg dlg(this);
   dlg.exec();
   if(dlg.savedChanges){ loadHomePage(); }
+  else{ loadHomePage(); }
+}
+
+void MainUI::GoSearch(){
+  //Search through the current page for the search term
+  QString term = line_search->text();
+  //qDebug() << "Searching:";
+  if(term!=lastsearch){ webview->findText(""); } //start over
+  if( !webview->findText(term) ){
+    //qDebug() << "Search term not found:" << term;
+    webview->findText(""); //go back to the top
+    webview->findText(term);
+  }
+  lastsearch = term;
+}
+
+void MainUI::openSearch(){
+  group_search->setVisible(true);
+  line_search->setFocus();
+}
+
+void MainUI::closeSearch(){
+  group_search->setVisible(false);	
 }

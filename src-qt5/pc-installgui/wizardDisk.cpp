@@ -23,7 +23,8 @@ void wizardDisk::programInit()
   populateDiskInfo();
 
   //connect(pushClose, SIGNAL(clicked()), this, SLOT(slotClose()));
-  connect(checkGPT, SIGNAL(clicked()), this, SLOT(slotGPTClicked()));
+  connect(radioUEFI, SIGNAL(clicked()), this, SLOT(slotUEFIClicked()));
+  connect(radioBIOS, SIGNAL(clicked()), this, SLOT(slotUEFIClicked()));
   connect(pushSwapSize, SIGNAL(clicked()), this, SLOT(slotSwapSize()));
   connect(pushRemoveMount, SIGNAL(clicked()), this, SLOT(slotRemoveFS()));
   connect(pushAddMount, SIGNAL(clicked()), this, SLOT(slotAddFS()));
@@ -57,10 +58,14 @@ void wizardDisk::programInit()
   connect(lineEncPass2,SIGNAL(textChanged(const QString &)),this,SLOT(slotCheckComplete()));
 
   // Check if we are running in EFI mode
-  if ( system("kenv grub.platform | grep -q 'efi'") == 0 )
+  if ( system("kenv grub.platform | grep -q 'efi'") == 0 ) {
+     radioUEFI->setChecked(true);
      efiMode=true;
-  else
+  } else {
+     radioBIOS->setChecked(true);
      efiMode=false;
+  }
+  slotUEFIClicked();
 }
 
 void wizardDisk::populateDiskInfo()
@@ -83,6 +88,7 @@ void wizardDisk::populateDiskInfo()
 void wizardDisk::slotChangedDisk()
 {
   QString ptag;
+  bool ok;
 
   if ( comboDisk->currentText().isEmpty())
     return;
@@ -94,14 +100,27 @@ void wizardDisk::slotChangedDisk()
   disk.truncate(disk.indexOf(" -"));
   for (int i=0; i < sysDisks.count(); ++i) {
     // Make sure to only add the slices to the listDiskSlices
-    if ( sysDisks.at(i).at(0) == "SLICE" && disk == sysDisks.at(i).at(1) && sysDisks.at(i).at(4) != "Unused Space") {
-      ptag = sysDisks.at(i).at(4).section(",", 0, 0);
-      ptag = ptag.section("/", 0, 0);
-      ptag.truncate(15);
-      if ( ptag.indexOf(")") == -1 )
-        ptag += ")";
-      comboPartition->addItem(sysDisks.at(i).at(2) + ": " +  sysDisks.at(i).at(3) + "MB " + ptag );
+    if ( sysDisks.at(i).at(0) != "SLICE" )
+      continue;
+    // Only add the slices for the target disk
+    if ( disk != sysDisks.at(i).at(1) )
+      continue;
+    // If we have freespace, only list if it is -gt 10GB
+    if ( sysDisks.at(i).at(4) == "Unused Space" ) {
+      sysDisks.at(i).at(3).toInt(&ok);
+      if ( !ok )
+        continue;
+      if ( sysDisks.at(i).at(3).toInt(&ok) < 10000 )
+        continue;
     }
+
+    // Add the slice / partition
+    ptag = sysDisks.at(i).at(4).section(",", 0, 0);
+    ptag = ptag.section("/", 0, 0);
+    ptag.truncate(15);
+    if ( ptag.indexOf(")") == -1 )
+      ptag += ")";
+    comboPartition->addItem(sysDisks.at(i).at(2) + ": " +  sysDisks.at(i).at(3) + "MB " + ptag );
   }
 
 }
@@ -117,21 +136,19 @@ void wizardDisk::accept()
   bool useGPT = false;
   bool force4K = false;
   QString zpoolName;
+  QString biosMode;
+
+  if ( radioUEFI->isChecked() )
+    biosMode="efi";
+  else
+    biosMode="pc";
+
   if (comboPartition->currentIndex() == 0 )
-    useGPT = checkGPT->isChecked();
+    useGPT = radioGPT->isChecked();
 
   // Get the boot-loader
-  bootLoader = comboBootLoader->currentText();
-  if ( radioBasic->isChecked() )
-     bootLoader="GRUB";
+  bootLoader="GRUB";
 
-  if ( comboPartition->currentIndex() != 0 && bootLoader == "NONE"  ) {
-     QMessageBox::warning(this, tr("No boot-loader!"),
-     tr("You have chosen not to install a boot-loader. You will need to manually setup your own loader."),
-     QMessageBox::Ok,
-     QMessageBox::Ok);
-  }
-     
   // When doing advanced ZFS setups, make sure to use GPT
   if ( radioAdvanced->isChecked() && groupZFSOpts->isChecked() )
     useGPT = true;
@@ -144,9 +161,9 @@ void wizardDisk::accept()
      zpoolName = lineZpoolName->text();
 
   if ( radioExpert->isChecked() )
-    emit saved(sysFinalDiskLayout, QString("NONE"), false, zpoolName, force4K);
+    emit saved(sysFinalDiskLayout, QString("NONE"), false, zpoolName, force4K, QString(""));
   else
-    emit saved(sysFinalDiskLayout, bootLoader, useGPT, zpoolName, force4K);
+    emit saved(sysFinalDiskLayout, bootLoader, useGPT, zpoolName, force4K, biosMode);
   close();
 }
 
@@ -157,16 +174,23 @@ int wizardDisk::nextId() const
        if (radioExpert->isChecked())
          return Page_Expert;
        if (radioBasic->isChecked()) {
-	 checkGPT->setVisible(false);
-	 comboBootLoader->setVisible(false);
-	 textBootLoader->setVisible(false);
+         radioGPT->setChecked(true);
+	 groupScheme->setVisible(false);
+	 groupBIOS->setVisible(false);
 	 checkForce4K->setVisible(false);
 	 groupZFSPool->setVisible(false);
+         // Check if we are running in EFI mode
+         if ( system("kenv grub.platform | grep -q 'efi'") == 0 ) {
+            radioUEFI->setChecked(true);
+	    radioMBR->setEnabled(false);
+         } else {
+            radioBIOS->setChecked(true);
+	    radioMBR->setEnabled(true);
+	 }
        }
        if (radioAdvanced->isChecked()) {
-	 checkGPT->setVisible(true);
-	 comboBootLoader->setVisible(true);
-	 textBootLoader->setVisible(true);
+	 groupScheme->setVisible(true);
+	 groupBIOS->setVisible(true);
 	 checkForce4K->setVisible(true);
 	 groupZFSPool->setVisible(true);
        }
@@ -178,9 +202,14 @@ int wizardDisk::nextId() const
          return Page_Confirmation;
        if (comboPartition->currentIndex() != 0 ) {
 	 groupZFSOpts->setEnabled(false);
+         // If we are installing to a GPT partition, disable swap
+         if ( comboPartition->currentIndex() != 0 && radioGPT->isChecked() )
+            pushSwapSize->setVisible(false);
+         else
+            pushSwapSize->setVisible(true);
          return Page_Mounts;
        } else {
-	 if ( checkGPT->isChecked() )
+	 if ( radioGPT->isChecked() )
 	   groupEncrypt->setEnabled(true);
          else
 	   groupEncrypt->setEnabled(false);
@@ -195,6 +224,11 @@ int wizardDisk::nextId() const
        return Page_Enc;
        break;
      case Page_Enc:
+       // If we are installing to a GPT partition, disable swap
+       if ( comboPartition->currentIndex() != 0 && radioGPT->isChecked() )
+          pushSwapSize->setVisible(false);
+       else
+          pushSwapSize->setVisible(true);
        return Page_Mounts;
        break;
      case Page_Mounts:
@@ -263,12 +297,19 @@ bool wizardDisk::validatePage()
      case Page_BasicDisk:
 	
 	 if ( ! radioAdvanced->isChecked() ) {
-	   checkGPT->setChecked(false);
-	   checkGPT->setVisible(false);
+	   radioGPT->setChecked(true);
+	   groupScheme->setVisible(false);
+	   groupBIOS->setVisible(false);
 	   checkForce4K->setVisible(false);
 	   checkForce4K->setChecked(false);
 	 } else {
-	   checkGPT->setVisible(true);
+           if ( comboPartition->currentIndex() == 0) {
+	     groupScheme->setVisible(true);
+	     groupBIOS->setVisible(true);
+	   } else {
+	     groupScheme->setVisible(false);
+	     groupBIOS->setVisible(false);
+           }
 	   checkForce4K->setVisible(true);
 	 } 
 
@@ -549,14 +590,17 @@ void wizardDisk::generateDiskLayout()
     rootOpts="(compress=lz4|atime=off)";
 
      // This lets the user do nifty stuff like a mirror/raid post-install with a single zpool command
-    fileSystem << targetDisk << targetSlice << "/" + rootOpts + ",/tmp(compress=lz4|setuid=off|exec=off),/usr(canmount=off|mountpoint=none),/usr/home(compress=lz4),/usr/jails(compress=lz4),/usr/obj(compress=lz4),/usr/pbi(compress=lz4),/usr/ports(compress=lz4),/usr/src(compress=lz4),/var(canmount=off|atime=on|mountpoint=none),/var/audit(compress=lz4),/var/log(compress=lz4|exec=off|setuid=off),/var/tmp(compress=lz4|exec=off|setuid=off)" << fsType << tmp.setNum(totalSize) << "" << tmpPass;
+    fileSystem << targetDisk << targetSlice << "/" + rootOpts + ",/tmp(compress=lz4|setuid=off),/usr(canmount=off|mountpoint=none),/usr/home(compress=lz4),/usr/jails(compress=lz4),/usr/obj(compress=lz4),/usr/ports(compress=lz4),/usr/src(compress=lz4),/var(canmount=off|atime=on|mountpoint=none),/var/audit(compress=lz4),/var/log(compress=lz4|exec=off|setuid=off),/var/mail(compress=lz4),/var/tmp(compress=lz4|exec=off|setuid=off)" << fsType << tmp.setNum(totalSize) << "" << tmpPass;
     sysFinalDiskLayout << fileSystem;
     fileSystem.clear();
 
+  // If installing to a specific GPT slice, we can't create a 2nd swap partition
+  if ( targetType != "ALL" || radioGPT->isChecked() ) {
     // Now add swap space
     fileSystem << targetDisk << targetSlice << "SWAP.eli" << "SWAP.eli" << tmp.setNum(swapsize) << "" << "";
     sysFinalDiskLayout << fileSystem;
     fileSystem.clear();
+  }
 
     //qDebug() << "Auto-Gen FS:" <<  fileSystem;
   }
@@ -608,12 +652,11 @@ int wizardDisk::getDiskSliceSize()
   QString disk = comboDisk->currentText();
   disk.truncate(disk.indexOf(" -"));
 
-  int safeBuf = 10;
+  int safeBuf = 15;
 
   // If on EFI we subtract 100MiB to save for a FAT16/EFI partition
-  if ( efiMode )
-    safeBuf = 110;
-
+  if ( radioUEFI->isChecked() )
+    safeBuf = 115;
 
   // Check the full disk
   if ( comboPartition->currentIndex() == 0) {
@@ -623,7 +666,7 @@ int wizardDisk::getDiskSliceSize()
         //qDebug() << "Selected Disk Size: " +  sysDisks.at(i).at(2);
         sysDisks.at(i).at(2).toInt(&ok);
         if( ok )
-          return sysDisks.at(i).at(2).toInt(&ok) - safeBuf;
+          return (sysDisks.at(i).at(2).toInt(&ok) - safeBuf);
         else
   	  return -1;
       }
@@ -638,7 +681,7 @@ int wizardDisk::getDiskSliceSize()
         //qDebug() << "Selected Slice Size: " +  sysDisks.at(i).at(3);
         sysDisks.at(i).at(3).toInt(&ok);
         if( ok )
-          return sysDisks.at(i).at(3).toInt(&ok) - safeBuf;
+          return (sysDisks.at(i).at(3).toInt(&ok) - safeBuf);
         else
           return -1;
       }
@@ -1077,10 +1120,13 @@ void wizardDisk::generateCustomDiskLayout()
   fileSystem << targetDisk << targetSlice << zMnts.join(",") << fsType << tmp.setNum(zpoolSize) << zOpts << tmpPass;
   sysFinalDiskLayout << fileSystem;
 
-  // Now add swap space
-  fileSystem.clear();
-  fileSystem << targetDisk << targetSlice << "SWAP.eli" << "SWAP.eli" << tmp.setNum(swapsize) << "" << "";
-  sysFinalDiskLayout << fileSystem;
+  // If installing to a specific GPT slice, we can't create a 2nd swap partition
+  if ( targetType != "ALL" || radioGPT->isChecked() ) {
+    // Now add swap space 
+    fileSystem.clear();
+    fileSystem << targetDisk << targetSlice << "SWAP.eli" << "SWAP.eli" << tmp.setNum(swapsize) << "" << "";
+    sysFinalDiskLayout << fileSystem;
+  }
 
   qDebug() <<"AutoLayout:" << sysFinalDiskLayout;
 }
@@ -1267,8 +1313,9 @@ void wizardDisk::setRestoreMode()
   restoreMode=true;
 }
 
-void wizardDisk::slotGPTClicked()
+void wizardDisk::slotUEFIClicked()
 {
-  // We can do 4K block forcing on GPT / MBR now
-  checkForce4K->setEnabled(true);
+  radioMBR->setEnabled(! radioUEFI->isChecked());
+  if ( radioUEFI->isChecked() )
+    radioGPT->setChecked(true);
 }

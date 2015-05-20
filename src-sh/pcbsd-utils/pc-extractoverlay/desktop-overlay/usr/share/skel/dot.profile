@@ -6,7 +6,7 @@
 #
 
 # remove /usr/games and /usr/X11R6/bin if you want
-PATH=/usr/local/share/pcbsd/bin:/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:$HOME/bin:/usr/pbi/bin:/usr/local/sbin:/usr/local/bin; export PATH
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:$HOME/bin:/usr/local/sbin:/usr/local/bin; export PATH
 
 # Setting TERM is normally done through /etc/ttys.  Do only override
 # if you're sure that you'll never log in via telnet or xterm or a
@@ -24,5 +24,6 @@ ENV=$HOME/.shrc; export ENV
 MORE="-erX" ; export MORE
 
 # Set VIM as default
-alias vi="vim"
-
+if [ -e "/usr/local/bin/vim" ]; then
+  alias vi="vim"
+fi

@@ -55,7 +55,11 @@ void SysStatus::checkSystem(bool checkjails){
     }
   }
 }
-	
+
+bool SysStatus::InTorMode(){
+  return ("TRUE" == pcbsd::Utils::runShellCommand("pc-sysconfig usingtormode").join("").simplified() );
+}
+
 bool SysStatus::changedFrom(SysStatus old){
   //See if the current status is different from an old status
   if(old.complete  != complete){ return true; }
@@ -64,7 +68,7 @@ bool SysStatus::changedFrom(SysStatus old){
   else if(updating){ return false; } //both updating - no real difference
   else if(sys != old.sys){ return true; }
   else{
-    return ((pkg || sec || jail) == (old.pkg || old.sec || old.jail)); //if update availability changed (don't care which type)
+    return ((pkg || sec || jail) != (old.pkg || old.sec || old.jail)); //if update availability changed (don't care which type)
   }
 }
 	

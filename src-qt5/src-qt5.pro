@@ -13,18 +13,18 @@ SUBDIRS+= libpcbsd \
 	 pc-mixer \
 	 pc-mounttray \
 	 pc-netmanager \
-	 pc-pfmanager \
+	 pc-fwmanager \
 	 pc-servicemanager \
-	 pc-softwaremanager \
 	 pc-softweb \
 	 pc-hwdetect \
-	 pc-soundconfig \
 	 pc-installgui \
+	 pc-pdfviewer \
 	 pc-syskeyboard \
 	 pc-sysmanager \
 	 pc-systemupdatertray \
 	 pc-updategui \
 	 pc-usermanager \
+	 pc-webkitviewer \
 	 pc-welcome \
 	 pc-xgui \
 	 pc-zmanager \
@@ -36,5 +36,8 @@ SUBDIRS+= libpcbsd \
 doins.path=/
 doins.extra=cd xtrafiles && sh install.sh $(INSTALL_ROOT)/usr/local
                 
-INSTALLS += doins
+mkdocs.path=/
+mkdocs.extra=cd docs && sh mkdocs.sh $(INSTALL_ROOT)/usr/local
+
+INSTALLS += doins mkdocs
 

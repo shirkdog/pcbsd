@@ -11,9 +11,9 @@ NetworkTray src-qt5/pc-netmanager/src/NetworkTray
 ethernetconfig src-qt5/pc-netmanager/src/ethernetconfig
 wificonfig src-qt5/pc-netmanager/src/wificonfig
 PBSystem src-qt5/pc-sysmanager
-PFManager src-qt5/pc-pfmanager
+PFManager src-qt5/pc-fwmanager
 ServiceManager src-qt5/pc-servicemanager
-SoftwareManager src-qt5/pc-softweb
+SoftwareWeb src-qt5/pc-softweb
 SoundConfig src-qt5/pc-soundconfig
 XGUISource src-qt5/pc-xgui
 pcbsdusermanager src-qt5/pc-usermanager
@@ -35,3 +35,5 @@ qsudo src-qt5/qsudo
 pc-bootconfig src-qt5/pc-bootconfig
 ZManager src-qt5/pc-zmanager
 pc-bugreport src-qt5/pc-bugreport
+webkitviewer src-qt5/pc-webkitviewer
+pc-mixer src-qt5/pc-mixer

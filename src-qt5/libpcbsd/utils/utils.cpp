@@ -416,9 +416,12 @@ QString Utils::getConfFileValue( QString oFile, QString Key, int occur )
        	QString line;
        	while ( !stream.atEnd() ) {
             	line = stream.readLine(); // line of text excluding '\n'
-            
-                // If the KEY is found in the line, continue processing 
-		if ( line.trimmed().indexOf("#", 0) == 0 || line.indexOf(Key, 0) == -1 || line.indexOf(Key, 0) > 0)
+		line = line.section("#",0,0).trimmed(); //remove any comments
+		if(line.isEmpty()){ continue; }
+		int index = line.indexOf(Key, 0);
+                //qDebug() << "Line:" << line << index;
+                // If the KEY is not found at the start of the line, continue processing 
+		if(index!=0)
 			continue;
 		
 	    	if ( found == occur) {
@@ -432,6 +435,7 @@ QString Utils::getConfFileValue( QString oFile, QString Key, int occur )
 				line.truncate(line.indexOf('"'));
 
 			file.close();
+			
     			return line;
     		} else {
        			found++;  
@@ -578,14 +582,21 @@ bool Utils::setConfFileValue( QString oFile, QString oldKey, QString newKey, int
     
 }
 
-//Run a shell command (return a list of lines)
-QStringList Utils::runShellCommand( QString command )
+QStringList Utils::runShellCommand( QString command ){
+  //Just a simple overload for backwards compatibility
+  bool junk = false;
+  return runShellCommand(command,junk);	
+}
+
+//Run a shell command (return a list of lines and an optional success flag)
+QStringList Utils::runShellCommand( QString command , bool& success)
 {
  //split the command string with individual commands seperated by a ";" (if any)
  QStringList cmdl = command.split(";");
  QString outstr;
  //run each individual command
- for(int i=0;i<cmdl.length();i++){ 
+ bool ok = true;
+ for(int i=0;i<cmdl.length() && ok;i++){ 
    QProcess p;  
    //Make sure we use the system environment to properly read system variables, etc.
    p.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
@@ -598,9 +609,14 @@ QStringList Utils::runShellCommand( QString command )
    }
    QString tmp = p.readAllStandardOutput();
    outstr.append(tmp);
+   ok = (p.exitCode()==0);
  }
  if(outstr.endsWith("\n")){outstr.chop(1);} //remove the newline at the end 
  QStringList out = outstr.split("\n");
+  //if(success!=0){
+    //Also return this optional output
+    success = ok;
+   //}
  //qDebug() << command;
  //for(int j=0; j<out.length();j++){ qDebug() << out[j];}
  return out;

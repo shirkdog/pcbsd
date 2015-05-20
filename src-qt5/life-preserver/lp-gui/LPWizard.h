@@ -23,9 +23,9 @@ public:
 	//Input dataset
 	void setDataset(QString);
 	//Output variables
-	bool cancelled, enableReplication;
-	int localTime, totalSnapshots, remotePort, remoteTime;
-	QString remoteHost, remoteUser, remoteDataset;
+	bool cancelled, enableReplication, enableScrub;
+	int localTime, totalSnapshots, remotePort, remoteTime, scrubTime, scrubDay;
+	QString remoteHost, remoteUser, remoteDataset, scrubSchedule;
 
 	virtual int nextId() const; //override the standard page order sometimes
 
@@ -36,7 +36,8 @@ private slots:
 	void slotFinished();
 	void slotCancelled();
 	void scanNetwork();
-	void on_combo_remote_freq_itemChanged(int index);
+	void on_combo_remote_freq_currentIndexChanged(int index);
+	void UpdateScrubUI();
 };
 
 #endif

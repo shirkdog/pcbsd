@@ -36,7 +36,8 @@ public:
     static QString getNLDesktopName(QString);
     static QString getDesktopIcon(QString);
     static QString getDesktopBinary(QString);
-    static QStringList getSystemUsers();
+    static void allowUidUnder1K(bool allow);
+    static QStringList getSystemUsers(bool realnames = true);
     static QString getUsernameFromDisplayname(QString);
     static QString getDisplayNameFromUsername(QString);
     static QStringList keyModels();
@@ -50,15 +51,23 @@ public:
     static QString getUserShell(QString);
     static void checkLocalDirs();
 
+    //Auto-login usage
     static QString getALUsername();
     static QString getALDesktopCmd();
     static QString getALPassword();
     
+    //Saved/Prior Settings
     static QString getLastUser();
     static QString getLastDE(QString);
     static void saveLoginInfo(QString, QString);
     static void readDefaultSysEnvironment(QString &lang, QString &keymodel, QString &keylayout, QString &keyvariant);
     static void saveDefaultSysEnvironment(QString lang, QString keymodel, QString keylayout, QString keyvariant);
+    
+    //Personacrypt usage
+    static QStringList getRegisteredPersonaCryptUsers();
+    static QStringList getAvailablePersonaCryptUsers();
+    static bool MountPersonaCryptUser(QString user, QString pass);
+    static bool UnmountPersonaCryptUser(QString user);
     
     static bool writeFile(QString fileName, QStringList contents);
     

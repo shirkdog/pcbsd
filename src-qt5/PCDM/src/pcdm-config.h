@@ -27,6 +27,7 @@ public:
   static QString xSessionsImageDir();
   static QString loginScriptsDir();
   static bool useAutoLogin(); 		//returns whether auto-login is enabled
+  static bool allowUnder1KUsers();
   static QString autoLoginUsername();	//returns username to log into automatically
   static QString autoLoginDesktop();	//return *.desktop file to startup automatically
   static QString autoLoginPassword();	//returns password to log in automatically
@@ -34,6 +35,7 @@ public:
   static QString splashscreen();	//return the image file for the splashscreen
   static bool allowPasswordView();	//returns whether password view button is enabled
   static bool allowUserSelection(); 	//returns whether to display system users for selection
+  static bool allowAnonLogin(); 		//returns whether the system is set to allow anonymous logins
 
 };
 

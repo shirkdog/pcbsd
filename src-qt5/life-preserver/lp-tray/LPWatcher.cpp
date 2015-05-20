@@ -140,6 +140,11 @@ bool LPWatcher::hasError(){
 bool LPWatcher::initPhase(){
   return INIT;
 }
+
+bool LPWatcher::hasSuccessfulReplication(){
+  return (LOGS.value(20)=="FINISHED");
+}
+
 // -------------------------------------
 //    PRIVATE FUNCTIONS
 // -------------------------------------
@@ -175,7 +180,7 @@ void LPWatcher::readLogFile(bool quiet){
 
     //Now decide what to do/show because of the log message
     //qDebug() << "New Log Message:" << log;
-    if(message.contains("creating snapshot")){
+    if(message.contains("creating snapshot", Qt::CaseInsensitive)){
       dev = message.section(" ",-1).simplified();
       //Setup the status of the message
       LOGS.insert(10,"SNAPCREATED");
@@ -185,10 +190,12 @@ void LPWatcher::readLogFile(bool quiet){
       LOGS.insert(14, timestamp); //full timestamp
       LOGS.insert(15, time); // time only
       if(!quiet){ emit MessageAvailable("message"); }
-    }else if(message.contains("starting replication")){
+    }else if(message.contains("Starting replication", Qt::CaseInsensitive)){
       //Setup the file watcher for this new log file
+      //qDebug() << " - Found Rep Start:" << dev << message;
       FILE_REPLICATION = dev;
-      dev = message.section(" ",5,5,QString::SectionSkipEmpty);
+      dev = message.section(" on ",1,1,QString::SectionSkipEmpty);
+      //qDebug() << " - New Dev:" << dev << "Valid Pools:" << reppools;
       //Make sure the device is currently setup for replication
       if( !reppools.contains(dev) ){ FILE_REPLICATION.clear(); continue; }
       //Try to start the replication watcher
@@ -203,9 +210,9 @@ void LPWatcher::readLogFile(bool quiet){
         LOGS.insert(26,tr("Replication Log")+" <"+FILE_REPLICATION+">"); //log file
         if(!quiet){ emit MessageAvailable("replication"); }
       }
-    }else if(message.contains("finished replication task")){
+    }else if(message.contains("finished replication task", Qt::CaseInsensitive)){
       stopRepFileWatcher();
-      dev = message.section(" ",-3, -3).simplified();
+      dev = message.section(" -> ",0,0).section(" ",-1).simplified();
       //Make sure the device is currently setup for replication
       if( reppools.contains(dev) ){
         //Now set the status of the process
@@ -228,10 +235,10 @@ void LPWatcher::readLogFile(bool quiet){
 	LOGS.remove(26);
 	if(!quiet){ emit MessageAvailable(""); }
       }
-    }else if( message.contains("FAILED replication") ){
+    }else if( message.contains("FAILED replication", Qt::CaseInsensitive) ){
       stopRepFileWatcher();
       //Now set the status of the process
-      dev = message.section(" ",-1).simplified();
+      dev = message.section(" -> ",0,0).section(" ",-1).simplified();
       //Make sure the device is currently setup for replication
       if( reppools.contains(dev) ){
 	//Update the logs
@@ -400,6 +407,9 @@ QStringList LPWatcher::getCmdOutput(QString  cmd){
 void LPWatcher::fileChanged(QString file){
   if(file == FILE_LOG){ readLogFile(); }
   else  if(file == FILE_REPLICATION){ readReplicationFile(); }
+  //Make sure the watched files were not removed for some reason
+  QStringList wfiles = watcher->files();
+  if( !wfiles.contains(file) ){ watcher->addPath(file); } //There will always be one signal like this when it is removed
 }
 
 void LPWatcher::checkPoolStatus(){
