@@ -110,7 +110,7 @@ void wizardDisk::slotChangedDisk()
       sysDisks.at(i).at(3).toInt(&ok);
       if ( !ok )
         continue;
-      if ( sysDisks.at(i).at(3).toInt(&ok) < 10000 )
+      if ( sysDisks.at(i).at(3).toInt(&ok) < 6000 )
         continue;
     }
 
@@ -118,6 +118,7 @@ void wizardDisk::slotChangedDisk()
     ptag = sysDisks.at(i).at(4).section(",", 0, 0);
     ptag = ptag.section("/", 0, 0);
     ptag.truncate(15);
+    ptag = "(" + ptag;
     if ( ptag.indexOf(")") == -1 )
       ptag += ")";
     comboPartition->addItem(sysDisks.at(i).at(2) + ": " +  sysDisks.at(i).at(3) + "MB " + ptag );
@@ -133,7 +134,7 @@ void wizardDisk::slotClose()
 void wizardDisk::accept()
 {
   QString bootLoader;
-  bool useGPT = false;
+  QString partType="none";
   bool force4K = false;
   QString zpoolName;
   QString biosMode;
@@ -143,15 +144,20 @@ void wizardDisk::accept()
   else
     biosMode="pc";
 
-  if (comboPartition->currentIndex() == 0 )
-    useGPT = radioGPT->isChecked();
+  if (comboPartition->currentIndex() == 0 ) {
+    if ( radioGPT->isChecked() ) {
+      partType="GPT";
+    } else {
+      partType="MBR";
+    }
+  }
 
   // Get the boot-loader
   bootLoader="GRUB";
 
   // When doing advanced ZFS setups, make sure to use GPT
   if ( radioAdvanced->isChecked() && groupZFSOpts->isChecked() )
-    useGPT = true;
+    partType="GPT";
 
   // When doing advanced ZFS setups, check if 4K is enabled
   if ( radioAdvanced->isChecked() && checkForce4K->isChecked() )
@@ -161,9 +167,9 @@ void wizardDisk::accept()
      zpoolName = lineZpoolName->text();
 
   if ( radioExpert->isChecked() )
-    emit saved(sysFinalDiskLayout, QString("NONE"), false, zpoolName, force4K, QString(""));
+    emit saved(sysFinalDiskLayout, QString("NONE"), partType, zpoolName, force4K, QString(""));
   else
-    emit saved(sysFinalDiskLayout, bootLoader, useGPT, zpoolName, force4K, biosMode);
+    emit saved(sysFinalDiskLayout, bootLoader, partType, zpoolName, force4K, biosMode);
   close();
 }
 
@@ -202,11 +208,7 @@ int wizardDisk::nextId() const
          return Page_Confirmation;
        if (comboPartition->currentIndex() != 0 ) {
 	 groupZFSOpts->setEnabled(false);
-         // If we are installing to a GPT partition, disable swap
-         if ( comboPartition->currentIndex() != 0 && radioGPT->isChecked() )
-            pushSwapSize->setVisible(false);
-         else
-            pushSwapSize->setVisible(true);
+         pushSwapSize->setVisible(true);
          return Page_Mounts;
        } else {
 	 if ( radioGPT->isChecked() )
@@ -224,11 +226,7 @@ int wizardDisk::nextId() const
        return Page_Enc;
        break;
      case Page_Enc:
-       // If we are installing to a GPT partition, disable swap
-       if ( comboPartition->currentIndex() != 0 && radioGPT->isChecked() )
-          pushSwapSize->setVisible(false);
-       else
-          pushSwapSize->setVisible(true);
+       pushSwapSize->setVisible(true);
        return Page_Mounts;
        break;
      case Page_Mounts:
@@ -395,6 +393,18 @@ bool wizardDisk::validatePage()
 	      return true;
             }
          }
+	 if ( comboZFSMode->currentText() == "stripe" ) {
+            labelZFSMsg->setText(tr("Please select the additional disks to stripe"));
+	    int numChecked = 0;
+	    for ( int i = 0; i < listZFSDisks->count(); ++i )
+		if ( listZFSDisks->item(i)->checkState() == Qt::Checked )
+		   numChecked++;
+            if ( numChecked > 1 ) {
+              button(QWizard::NextButton)->setEnabled(true);
+	      return true;
+            }
+         }
+
 
          // Disable the next button until we get a working config
          button(QWizard::NextButton)->setEnabled(false);
@@ -595,7 +605,7 @@ void wizardDisk::generateDiskLayout()
     fileSystem.clear();
 
   // If installing to a specific GPT slice, we can't create a 2nd swap partition
-  if ( targetType != "ALL" || radioGPT->isChecked() ) {
+  if ( swapsize > 0 ) {
     // Now add swap space
     fileSystem << targetDisk << targetSlice << "SWAP.eli" << "SWAP.eli" << tmp.setNum(swapsize) << "" << "";
     sysFinalDiskLayout << fileSystem;
@@ -612,6 +622,18 @@ void wizardDisk::populateDiskTree()
 {
   QStringList tmpList, zMnts;
   QString tmp, opts;
+
+  // If installing to Free Space, show the option to change partition size
+  labelNewPartition->setVisible(false);
+  spinNewPartition->setVisible(false);
+  spinNewPartition->setRange(0, 0);
+  spinNewPartition->setValue(0);
+  if ( comboPartition->currentIndex() != 0 && comboPartition->currentText().contains("Unused") ) {
+    spinNewPartition->setRange(5000, this->getDiskSliceSize());
+    spinNewPartition->setValue(getDiskSliceSize());
+    labelNewPartition->setVisible(true);
+    spinNewPartition->setVisible(true);
+  }
 
   treeMounts->clear();
   treeMounts->setHeaderLabels(QStringList() << "ID" << tr("ZFS Mounts") << tr("ZFS Options") );
@@ -851,6 +873,11 @@ void wizardDisk::slotTreeMountsRightClick()
   popupCM->addAction( "off", this, SLOT(slotZCMOFF()));
   popupCM->addAction( "noauto", this, SLOT(slotZCMNOAUTO()));
 
+  // Case sensitivity
+  popupCI = popup->addMenu("casesensitivity");
+  popupCI->addAction( "sensitive", this, SLOT(slotZCION()));
+  popupCI->addAction( "insensitive", this, SLOT(slotZCIOFF()));
+
   // Create Checksum sub-menu
   popupCH = popup->addMenu("checksum");
   popupCH->addAction( "on", this, SLOT(slotZChkON()));
@@ -884,6 +911,16 @@ void wizardDisk::slotTreeMountsRightClick()
 
   popup->exec( QCursor::pos() );
 
+}
+
+void wizardDisk::slotZCION()
+{
+  toggleZFSOpt(QString("casesensitivity=sensitive"));
+}
+
+void wizardDisk::slotZCIOFF()
+{
+  toggleZFSOpt(QString("casesensitivity=insensitive"));
 }
 
 void wizardDisk::slotZCMNOAUTO()
@@ -1062,6 +1099,14 @@ void wizardDisk::generateCustomDiskLayout()
     targetLoc = 2;
   }
 
+  // Check if this is an install to "Unused Space"
+  for (int z=0; z < sysDisks.count(); ++z)
+     if ( sysDisks.at(z).at(0) == "SLICE" \
+       && sysDisks.at(z).at(2) == targetDisk + targetSlice \
+       && sysDisks.at(z).at(4) == "Unused Space" ) {
+       targetSlice = "free";
+     }
+
   // Start building the ZFS file-systems
   QStringList zMnts;
   fsType = "ZFS";
@@ -1070,6 +1115,10 @@ void wizardDisk::generateCustomDiskLayout()
     tmpPass=lineEncPass->text();
   }
   int zpoolSize = getDiskSliceSize();
+
+  // If we are using free space, get the user set size
+  if ( targetSlice == "free" && spinNewPartition->value() != 0 )
+    zpoolSize = spinNewPartition->value();
 
   // Deduct any swap space
   zpoolSize = zpoolSize - swapsize;
@@ -1121,7 +1170,7 @@ void wizardDisk::generateCustomDiskLayout()
   sysFinalDiskLayout << fileSystem;
 
   // If installing to a specific GPT slice, we can't create a 2nd swap partition
-  if ( targetType != "ALL" || radioGPT->isChecked() ) {
+  if ( swapsize > 0 ) {
     // Now add swap space 
     fileSystem.clear();
     fileSystem << targetDisk << targetSlice << "SWAP.eli" << "SWAP.eli" << tmp.setNum(swapsize) << "" << "";

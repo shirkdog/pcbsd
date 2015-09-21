@@ -96,7 +96,7 @@ int runSingleSession(int argc, char *argv[]){
   
   Config::loadConfigFile(confFile);
   // Now set the backend functionality of which usernames are allowed
-  Backend::allowUidUnder1K(Config::allowUnder1KUsers());
+  Backend::allowUidUnder1K(Config::allowUnder1KUsers(), Config::excludedUserList());
   //qDebug() << "Config File Loaded:" << QString::number(clock.elapsed())+" ms";
   // Startup the main application
   QApplication a(argc,argv); 
@@ -229,6 +229,7 @@ int main(int argc, char *argv[])
 {
  bool neverquit = true;
  bool runonce = true;  //Always set this for now until the internal repeater works properly
+ setenv("MM_CHARSET", "UTF-8", 1); //ensure UTF-8 text formatting
  if(argc==2){ if( QString(argv[1]) == "-once"){ runonce = true; } }
   
  while(neverquit){

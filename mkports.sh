@@ -11,7 +11,7 @@ get_last_rev_git()
    cd "${1}"
    rev=0
    rev=`git log -n 1 --date=raw . | grep 'Date:' | awk '{print $2}'`
-   cd $oPWD
+   cd "$oPWD"
    if [ -n "$rev" ] ; then
      echo "$rev"
      return 0
@@ -24,7 +24,7 @@ get_last_rev_git()
 }
 
 massage_subdir() {
-  cd $1
+  cd "$1"
   if [ $? -ne 0 ] ; then
      echo "SKIPPING $i"
      continue
@@ -72,10 +72,26 @@ fi
 
 ODIR=`pwd`
 
+echo "Sanity checking the repo..."
+OBJS=`find . | grep '\.o$'`
+if [ -n "$OBJS" ] ; then
+   echo "Found the following .o files, remove them first!"
+   echo $OBJS
+   exit 1
+fi
+
+# Get this jail version
+export UNAME_r="`freebsd-version`"
+
+# Get the GIT tag
+ghtag=`git log -n 1 . | grep '^commit ' | awk '{print $2}'`
+
+
 # Read the list of ports and build them now
 while read pline
 do
-  cd $ODIR
+
+  cd "$ODIR"
   ldir=`echo $pline | awk '{print $1}'`
 
   # Check for sub-dir
@@ -96,6 +112,18 @@ do
   # Get git revision number
   REV=`get_last_rev_git "./$ldir"`
 
+  port=`echo $pline | awk '{print $2}'`
+  tverfile="/tmp/.pcbsd-tests/`echo $port | sed 's|/|_|g'`"
+  if [ -e "$tverfile" -a -n "$PCBSD_MKTESTS" ] ; then
+    # If this file exists, we did a previous build of this port
+    oVer=`cat $tverfile`
+    echo "$port - $REV - $oVer -"
+    if [ "$REV" = "$oVer" ] ; then
+      echo "No changes to port: $port"
+      continue
+    fi
+  fi
+
   # Make the dist files
   rm ${distdir}/${dfile}-* 2>/dev/null
   echo "Creating $tdir dist file for version: $REV"
@@ -112,22 +140,23 @@ do
   cp -r ${ldir}/port-files ${portsdir}/$tdir
 
   # Set the version numbers
-  sed -i '' "s|CHGVERSION|${REV}|g" ${portsdir}/$tdir/Makefile
-
-  # Set the mirror to use
-  sed -i '' "s|http://www.pcbsd.org/~kris/software/|${DURL}|g" ${portsdir}/$tdir/Makefile
+  sed -i '' "s|%%CHGVERSION%%|${REV}|g" ${portsdir}/$tdir/Makefile
+  sed -i '' "s|%%GHTAG%%|${ghtag}|g" ${portsdir}/$tdir/Makefile
 
   # Create the makesums / distinfo file
-  cd ${distdir}
-  sha256 $dfile-${REV}.tar.xz > ${portsdir}/${tdir}/distinfo
-  echo "SIZE ($dfile-${REV}.tar.xz) = `stat -f \"%z\" $dfile-${REV}.tar.xz`" >> ${portsdir}/$tdir/distinfo
+  cd "${portsdir}/$tdir"
+  make makesum
+  if [ $? -ne 0 ] ; then
+    echo "Failed makesum"
+    exit 1
+  fi
 
   # Now make sure subdir Makefile is correct
   massage_subdir "${portsdir}/$tcat"
 
 done < mkports-list
 
-cd $ODIR
+cd "$ODIR"
 
 # Get the current timestamp
 TIMESTAMP="`date +%s`"
@@ -154,7 +183,7 @@ do
   sed -i '' "s|%TIMESTAMP%|$TIMESTAMP|g" ${portsdir}/${portMake}
 
   if [ "$port" = "misc/pcbsd-i18n-qt5" ] ; then
-     cd ${distdir}
+     cd "${distdir}"
      fetch -o pcbsd-i18n-qt5-${TIMESTAMP}.tar.xz https://github.com/pcbsd/pcbsd-i18n/raw/master/dist/pcbsd-i18n.txz
      sha256 pcbsd-i18n-qt5-${TIMESTAMP}.tar.xz > ${portsdir}/${port}/distinfo
      echo "SIZE (pcbsd-i18n-qt5-${TIMESTAMP}.tar.xz) = `stat -f \"%z\" pcbsd-i18n-qt5-${TIMESTAMP}.tar.xz`" >> ${portsdir}/$port/distinfo
@@ -162,5 +191,5 @@ do
 
   # Now make sure subdir Makefile is correct
   massage_subdir "${portsdir}/$tcat"
-  cd $ODIR
+  cd "$ODIR"
 done

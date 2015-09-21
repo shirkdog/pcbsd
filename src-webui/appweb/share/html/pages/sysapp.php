@@ -1,42 +1,13 @@
 <?
 defined('DS') OR die('No direct access allowed.');
-
-   if ( empty($jail)) {
 ?>
-<table class="jaillist" style="width:768px">
+<table class="header" style="width:100%">
 <tr>
-   <th>View installed applications</th>
+    <th>
+        <h1><center>Installed Applications</h1>
+    </th>
 </tr>
-<?
-   if ( $sysType != "APPLIANCE" )
-     echo "<tr><td><a href=\"/?p=sysapp&jail=__system__\"><img src=\"/images/system.png\" height=32 width=32> Local System</a></td></tr>";
-   $jailoutput = get_jail_list();
-
-   $running=$jailoutput[0];
-   $rarray = explode( ", ", $running);
-
-   foreach ($rarray as $jname) {
-     if ( empty($jname) )
-        continue;
-
-     unset($jarray);
-     exec("$sc ". escapeshellarg("jail ". $jname . " ipv4"), $jarray);
-     $jipv4=$jarray[0];
-
-     echo "<tr><td><a href=\"/?p=sysapp&jail=$jname\"><img src=\"/images/jail.png\" height=32 width=32> $jname - $jipv4</a></td></tr>";
-   }
-
-
-?>
-</table>
-
-<?
-
-   } else {
-     echo "<h1>Installed Applications in $jail (";
-     echo "<a href=\"/?p=exportpbis&jail=__system__\" style=\"text-decoration: underline;\">Export PBI list</a>)</h1>";
-?>
-
+<br>
 <br>
 <table class="jaillist" style="width:100%">
 <tr>
@@ -47,7 +18,7 @@ defined('DS') OR die('No direct access allowed.');
 
    $skipstop = $skip + 50;
 
-   $totalCols = 2;
+   $totalCols = 3;
 
    $pkgoutput = syscache_ins_pkg_list($jail);
 
@@ -77,7 +48,7 @@ defined('DS') OR die('No direct access allowed.');
 
        parse_details($pbiorigin, "$jail", $col, true, false);
        if ( $col == $totalCols )
-          $col = 1;
+         $col = 1;
        else
          $col++;
 
@@ -88,7 +59,4 @@ defined('DS') OR die('No direct access allowed.');
 ?>
 
 </table>
-<?
-   }
-?>
 </div>

@@ -27,14 +27,16 @@ widgetLocale::widgetLocale(QWidget *parent) : QWidget(parent), ui(new Ui::widget
     locL << QLocale::languageToString(locale.language());
   }
   //Get the current language
-  QLocale mylocale;
+  QLocale mylocale = QLocale::system();
+  initLocale = mylocale.name(); //save this for later
   QString cLocale = QLocale::languageToString(mylocale.language()) + " ("+mylocale.name()+")";
-  qDebug() << "Default Locale:" << cLocale;
+  //qDebug() << "Default Locale:" << cLocale;
   //Setup the interface
   ui->lineCurrentLocale->setText(cLocale); //current language
   for(int i=0; i< locL.length(); i++){
     ui->localeListWidget->addItem(locL[i] + " ("+locCodeL[i]+")"); //Available languages
   }
+  ui->localeListWidget->sortItems(); //Sort them by translated name
 }
 
 widgetLocale::~widgetLocale(){
@@ -52,6 +54,7 @@ void widgetLocale::setCurrentLocale(QString localeCode){
 
 void widgetLocale::slotClose()
 {
+  emit languageChanged(initLocale); //send the signal about the initial language we started with (just in case)
   close();
 }
 
@@ -80,6 +83,8 @@ QStringList widgetLocale::getLanguages(){
   }
   //make sure that en_US is always available
   stL.prepend("en_US");
+  stL.removeDuplicates();
+  stL.sort();
   return stL;
 }
 

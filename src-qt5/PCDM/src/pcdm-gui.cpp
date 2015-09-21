@@ -30,7 +30,7 @@ PCDMgui::PCDMgui() : QMainWindow()
     //Create the GUI based upon the current Theme
     createGUIfromTheme();
     //Now make sure that the login widget has keyboard focus
-    //loginW->resetFocus();
+    loginW->resetFocus();
     loginW->activateWindow();
     pcTimer = new QTimer(this);
 	pcTimer->setInterval(15000); //every 15 seconds
@@ -495,6 +495,9 @@ void PCDMgui::slotLocaleChanged(QString langCode){
   if(m_translator->load(translationFile)){
     Backend::log("Install the new translator: "+translationFile);
     QCoreApplication::installTranslator(m_translator);	  
+  }else if(langCode=="en_US"){
+    m_translator = new QTranslator(); //make sure it is completely empty
+    QCoreApplication::installTranslator(m_translator);
   }
   //Re-draw the interface
   retranslateUi();
@@ -512,6 +515,11 @@ void PCDMgui::LoadAvailableUsers(){
   //if(sysAvail.isEmpty()){ sysAvail = Backend::getSystemUsers(false); } //make sure to get usernames, not real names
   //qDebug() << "Loading Users:" << pcAvail << sysAvail << pcCurrent;
   QStringList userlist = Backend::getSystemUsers(false);
+  if(userlist.isEmpty()){ 
+    //Fallback method in case no valid system users could be found
+    Backend::allowUidUnder1K(true); 
+    userlist = Backend::getSystemUsers(false);
+  }
   //qDebug() << " - System:" << userlist;
   QString lastUser;
   if(!pcAvail.isEmpty()){ 
@@ -588,8 +596,8 @@ void PCDMgui::retranslateUi(){
     virtkeyboardButton->setText(tr("Virtual Keyboard"));
   //}
   //locale switcher button
-  localeButton->setToolTip(tr("Change locale"));
-  localeButton->setText(tr("Locale"));
+  localeButton->setToolTip( QString(tr("Change locale (%1)")).arg(this->locale().name()) );
+  localeButton->setText(this->locale().name());
   //keyboard layout button
   keyboardButton->setToolTip(tr("Change Keyboard Layout"));
   keyboardButton->setText(tr("Keyboard Layout"));

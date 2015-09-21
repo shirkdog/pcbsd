@@ -30,6 +30,13 @@ void MountTray::programInit()
   trayIconMenu = new QMenu();
     trayIcon->setContextMenu(trayIconMenu);
 	
+  //Generate the Network Drive Menu
+  netMenu = new QMenu( tr("Network Shares") );
+    netMenu->setIcon( QIcon(":icons/netshare.png") );
+  menuline = trayIconMenu->addSeparator();
+  trayIconMenu->addMenu(netMenu);
+  connect(netMenu, SIGNAL(triggered(QAction*)), this, SLOT(slotOpenDir(QAction*)) );
+	
   //Generate the system menu options (these don't change)
   sysMenu = new QMenu( tr("More Options") );
     sysMenu->setIcon( QIcon(":icons/config.png") );
@@ -45,7 +52,7 @@ void MountTray::programInit()
     sysMenu->addSeparator();
     sysMenu->addAction( QIcon(":icons/application-exit.png"), tr("Close Tray"), this, SLOT(closeTray()) );
   
-    menuline = trayIconMenu->addSeparator();
+    trayIconMenu->addSeparator();
     trayIconMenu->addMenu(sysMenu);
     
   // Tie the left-click signal to open the context menu
@@ -81,7 +88,7 @@ void MountTray::programInit()
   UpdateDeviceMenu();
   
   qDebug() << "-Program now ready for use";
-  QTimer::singleShot(15000, this, SLOT(slotDoneWithInit()) ); //give it 15 seconds before allowing single-instance or FS checks
+  QTimer::singleShot(30000, this, SLOT(slotDoneWithInit()) ); //give it 30 seconds before allowing single-instance or FS checks
 }
 
 void MountTray::slotTrayActivated() {
@@ -141,12 +148,17 @@ void MountTray::slotOpenSettings(){
   sdlg->useDiskWatcher = useDiskWatcher;
   sdlg->useDiskAutoTimer = useDiskTimerDevd;
   sdlg->diskRefreshMS = diskTimerMaxMS;
+  sdlg->useAutoPlay = useAutoPlay;
   sdlg->showDialog();
   //Now parse the output and save if necessary
   if(sdlg->SettingsChanged){
     useDiskWatcher = sdlg->useDiskWatcher;
     useDiskTimerDevd = sdlg->useDiskAutoTimer;
     diskTimerMaxMS = sdlg->diskRefreshMS;
+    useAutoPlay = sdlg->useAutoPlay;
+    for(int i=0; i<DEVLIST.length(); i++){
+      DEVLIST[i]->setAutoPlay(useAutoPlay);
+    }
     qDebug() << "INFO: Saving updated settings to file";
     saveCurrentSettings(); //update the saved settings
   }
@@ -167,8 +179,8 @@ void MountTray::slotSingleInstance()
 {
   trayIcon->show();
   //Also pop-up the mount tray settings dialog
-  if(MTINIT){ return; }
-  slotOpenSettings();
+  //if(MTINIT){ return; }
+  //slotOpenSettings();
 }
 
 void MountTray::slotDoneWithInit(){
@@ -194,22 +206,8 @@ void MountTray::slotPopupClicked(){
   if(popupSave == "FSCHECK"){
     //Open up the filesystem disk space UI
     slotOpenFSDialog();
-  }else if(!popupSave.isEmpty()){
-    //Check if it is a currently valid device
-    /*if(!popupSave.startsWith(DEVICEDIR)){ popupSave.prepend(DEVICEDIR); }
-    for(int i=0; i<deviceList.length(); i++){
-      if( deviceList[i]->device == popupSave){
-        //See if the device is mounted
-	if(deviceList[i]->isMounted()){
-	  //Open up the mountpoint directory
-	  openMediaDir(deviceList[i]->mountpoint);
-	}else{
-	  //Mount the device
-	  deviceList[i]->mountItem();
-	}
-        break;
-      }
-    }*/
+  }else{
+    slotTrayActivated(); //Open up the menu
   }
 
 }
@@ -220,6 +218,7 @@ void MountTray::loadSavedSettings(){
   //Set the defaults
   useDiskWatcher=true; useDiskTimerDevd=true;
   diskTimerMaxMS=3600000; //1 hour refresh timer
+  useAutoPlay = true;
   //Now load the file
   QFile file(filename);
   if(file.exists()){
@@ -241,7 +240,9 @@ void MountTray::loadSavedSettings(){
           else{ useDiskTimerDevd = false; }	
         }else if(var=="DiskSpaceTimingMaxMilliseconds"){
           diskTimerMaxMS = val.toInt();	
-        }
+        }else if(var=="AutoPlay"){
+	  useAutoPlay = (val.toLower()=="true");
+	}
       }
     }
     file.close();
@@ -271,6 +272,7 @@ void MountTray::saveCurrentSettings(){
   if(useDiskTimerDevd){ out << "true\n";}
   else{ out << "false\n"; }
   out << "DiskSpaceTimingMaxMilliseconds)"+QString::number(diskTimerMaxMS)+"\n";
+  out << "AutoPlay)" +QString(useAutoPlay ? "true\n": "false\n");
   //Now close the file
   file.close();
 }
@@ -358,6 +360,7 @@ void MountTray::UpdateDeviceMenu(bool fast, bool refresh){
   for(int i=0; i<avail.length(); i++){
     newitems = true;
     DeviceWidget *item = new DeviceWidget(this, avail[i]);
+    item->setAutoPlay(useAutoPlay);
     connect(item, SIGNAL(CloseMenu()), this, SLOT(slotCloseMenu()) );
     connect(item, SIGNAL(RefreshDeviceList()), this, SLOT(UpdateDeviceMenu()) );
     connect(item, SIGNAL(ShowMessage(QString, QString)), this, SLOT(slotDisplayPopup(QString, QString)) );
@@ -365,6 +368,21 @@ void MountTray::UpdateDeviceMenu(bool fast, bool refresh){
     trayIconMenu->insertAction(menuline, item->action()); //put them above the line
     item->UpdateDevice( mounted.contains(avail[i]) ); //need the full update to start
   }
+  
+  //Now update the list of available network shares
+  netMenu->clear();
+  QStringList info = pcbsd::Utils::runShellCommand("pc-sysconfig list-mountednetdrives").join("").split(", ");
+  qDebug() << "Net Info:" << info;
+  //Syntax for the list: [<name> (<IP>) on <directory>]
+  for(int i=0; i<info.length(); i++){
+    if(info[i].startsWith("[")){ continue; } //error code from pc-sysconfig
+    QAction *act = new QAction(info[i].section("(",0,0).simplified(), netMenu);
+      act->setWhatsThis( info[i].section(" on ",1,1).simplified() );
+      act->setToolTip( info[i].section(")",0,0).section("(",1,1).simplified() );
+    netMenu->addAction(act);
+  }
+  netMenu->setEnabled( !netMenu->isEmpty() );
+  
   //Now show a popup message about any new devices
   if(!avail.isEmpty() && !MTINIT && newitems && !refresh){
     slotDisplayPopup(tr("Devices Available"), tr("New Devices are available for use"));

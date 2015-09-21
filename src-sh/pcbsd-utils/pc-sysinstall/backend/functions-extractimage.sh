@@ -36,11 +36,17 @@ start_extract_dist()
   if [ -z "$INSFILE" ]; then exit_err "Called extraction with no install file set!"; fi
   local DDIR="$1"
 
+
   # Check if we are doing an upgrade, and if so use our exclude list
   if [ "${INSTALLMODE}" = "upgrade" ]; then
    TAROPTS="-X ${PROGDIR}/conf/exclude-from-upgrade"
   else
    TAROPTS=""
+  fi
+
+  get_value_from_cfg installQuiet
+  if [ -z "$VAL" -o "$VAL" = "no" ] ; then
+     TAROPTS="${TAROPTS} -v"
   fi
 
   # Loop though and extract dist files
@@ -54,7 +60,7 @@ start_extract_dist()
 	 fi
       fi
       echo_log "pc-sysinstall: Starting Extraction (${di})"
-      tar -xpv -C ${FSMNT} ${TAROPTS} -f ${DDIR}/${di}.txz 2>&1 | tee -a ${FSMNT}/.tar-extract.log
+      tar -xp -C ${FSMNT} ${TAROPTS} -f ${DDIR}/${di}.txz 2>&1 | tee -a ${FSMNT}/.tar-extract.log
       if [ $? -ne 0 ]; then
         cd /
         echo "TAR failure occurred:" >>${LOGOUT}
@@ -91,6 +97,11 @@ start_extract_uzip_tar()
    TAROPTS=""
   fi
 
+  get_value_from_cfg installQuiet
+  if [ -z "$VAL" -o "$VAL" = "no" ] ; then
+     TAROPTS="${TAROPTS} -v"
+  fi
+
   echo_log "pc-sysinstall: Starting Extraction"
 
   case ${PACKAGETYPE} in
@@ -110,7 +121,7 @@ start_extract_uzip_tar()
       cd ${FSMNT}.uzip
 
       # Copy over all the files now!
-      tar cvf - . 2>/dev/null | tar -xpv -C ${FSMNT} ${TAROPTS} -f - 2>&1 | tee -a ${FSMNT}/.tar-extract.log
+      tar cvf - . 2>/dev/null | tar -xp -C ${FSMNT} ${TAROPTS} -f - 2>&1 | tee -a ${FSMNT}/.tar-extract.log
       if [ $? -ne 0 ]
       then
         cd /
@@ -132,19 +143,19 @@ start_extract_uzip_tar()
         exit_err "ERROR: Failed extracting the tar image"
       fi
       ;;
-    livecd) 
-      # Copying file to disk without /usr
-      rsync -avzH --exclude 'uzip' --exclude 'media/*' --exclude 'proc/*' --exclude 'mnt/*' --exclude 'tmp/*' --exclude 'dist/*' --exclude 'usr' / ${FSMNT} >&1 2>&1
+    livecd)
+     # GhostBSD specific (prepare a ro layer to copy from)
+      DEVICE=$(mdconfig -a -t vnode -o readonly -f /dist/uzip${UZIP_DIR}.uzip)
+      mount -o ro ${DEVICE}.uzip ${CDMNT}${UZIP_DIR}
+      # Copying file to disk 
+      rsync -avH --exclude 'media/*' --exclude 'proc/*' --exclude 'mnt/*' --exclude 'tmp/*' --exclude 'dist/*' --exclude 'gbi' --exclude 'cdmnt-install' ${CDMNT}/ ${FSMNT} >&1 2>&1
       if [ "$?" != "0" ]
       then
         exit_err "ERROR: Failed to copy files"
       fi
-      # Copying /usr alone to disk
-      rsync -avzH /usr ${FSMNT}/ >&1 2>&1
-      if [ "$?" != "0" ]
-      then
-        exit_err "ERROR: Failed to copy files"
-      fi
+      umount -f ${CDMNT}${UZIP_DIR}
+      mdconfig -d -u ${DEVICE}
+      chmod 1777 ${FSMNT}/tmp
       ;;
   esac
 
@@ -239,6 +250,10 @@ fetch_dist_file()
   fi
 
   FTPPATH="${VAL}"
+  FBSDVER=`uname -r | cut -d "-" -f 1-2`
+  ARCH=`uname -m`
+  FTPPATH=`echo $FTPPATH | sed "s|%VERSION%|${FBSDVER}|g"`
+  FTPPATH=`echo $FTPPATH | sed "s|%ARCH%|${ARCH}|g"`
   
   # Check if we have a /usr partition to save the download
   if [ -d "${FSMNT}/usr" ]

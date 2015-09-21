@@ -1,42 +1,13 @@
 #include "LPGUtils.h"
 
+#include <unistd.h>
+
 LPDataset LPGUtils::loadPoolData(QString zpool){
   //Load the current information for the given zpool
   qDebug() << "[DEBUG] New Dataset: " << zpool;
   LPDataset DSC;
-  //List all the mountpoints in this dataset
-  qDebug() << "[DEBUG] list snapshots";
-  QStringList subsets = LPBackend::listDatasetSubsets(zpool);
-  QStringList lpsnapcomments;
-  QStringList lpsnaps = LPBackend::listLPSnapshots(zpool, lpsnapcomments);
-  //Fill the snapshots/comments hash
-  for(int i=0; i<lpsnaps.length() && i<lpsnapcomments.length(); i++){
-    DSC.snapComment.insert(lpsnaps[i], lpsnapcomments[i]);
-  }
-  //populate the list of snapshots available for each mountpoint
-  for(int i=0; i<subsets.length(); i++){
-    //qDebug() << "Subset:" << subsets[i];
-    QStringList snaps = LPBackend::listSnapshots(subsets[i]);
-    //qDebug() << " - Snapshots:" << snaps;
-    if(snaps.isEmpty()){
-      //invalid subset - remove it from the list
-      subsets.removeAt(i);
-      i--;
-    }else{
-      QStringList subsnaps;
-      //only list the valid snapshots that life preserver created
-      for(int s=0; s<lpsnaps.length(); s++){
-	int index = snaps.indexOf(lpsnaps[s]);
-        if(index > -1){ subsnaps << lpsnaps[s]; snaps.removeAt(index); }
-      }
-      /*//Now list all the other available snapshots (no certain ordering)
-      if(!snaps.isEmpty()){try 
-	subsnaps << "--"; //so we know that this is a divider between the sections
-	subsnaps << snaps;
-      }*/
-      DSC.subsetHash.insert(subsets[i],subsnaps); //add it to the internal container hash
-    }
-  }
+	DSC.zpool = zpool;
+
   //Parse "zpool status <pool>"
   qDebug() << "[DEBUG] get zpool status";
   QStringList zstat = LPBackend::getCmdOutput("zpool status "+zpool);
@@ -115,6 +86,46 @@ LPDataset LPGUtils::loadPoolData(QString zpool){
   DSC.finishedStatus = finished.join("\n");
   //Return the dataset
   return DSC;
+}
+
+void LPGUtils::loadSnapshotInfo(LPDataset* DSC){
+  //List all the mountpoints in this dataset
+  qDebug() << "[DEBUG] list snapshots";
+  QStringList subsets = LPBackend::listDatasetSubsets(DSC->zpool);
+  QStringList lpsnapcomments;
+  QStringList lpsnaps = LPBackend::listLPSnapshots(DSC->zpool, lpsnapcomments);
+  //qDebug() << "subsets:" << subsets;
+  //qDebug() << "lpsnaps:" << lpsnaps;
+  //Fill the snapshots/comments hash
+  DSC->snapComment.clear();
+  for(int i=0; i<lpsnaps.length() && i<lpsnapcomments.length(); i++){
+    DSC->snapComment.insert(lpsnaps[i], lpsnapcomments[i]);
+  }
+  //populate the list of snapshots available for each mountpoint
+  DSC->subsetHash.clear();
+  for(int i=0; i<subsets.length(); i++){
+    //qDebug() << "Subset:" << subsets[i];
+    QStringList snaps = LPBackend::listSnapshots(subsets[i]);
+    //qDebug() << " - Snapshots:" << snaps;
+    if(snaps.isEmpty()){
+      //invalid subset - remove it from the list
+      subsets.removeAt(i);
+      i--;
+    }else{
+      QStringList subsnaps;
+      //only list the valid snapshots that life preserver created
+      for(int s=0; s<lpsnaps.length(); s++){
+	int index = snaps.indexOf(lpsnaps[s]);
+        if(index > -1){ subsnaps << lpsnaps[s]; snaps.removeAt(index); }
+      }
+      /*//Now list all the other available snapshots (no certain ordering)
+      if(!snaps.isEmpty()){try 
+	subsnaps << "--"; //so we know that this is a divider between the sections
+	subsnaps << snaps;
+      }*/
+      DSC->subsetHash.insert(subsets[i],subsnaps); //add it to the internal container hash
+    }
+  }	
 }
 
 QString LPGUtils::generateReversionFileName(QString fileName, QString destDir){
@@ -275,6 +286,9 @@ QStringList LPGUtils::listAvailableHardDisks(){
 }
 
 QStringList LPGUtils::scanNetworkSSH(){
+  char chost[_POSIX_HOST_NAME_MAX];
+  gethostname(chost, _POSIX_HOST_NAME_MAX);
+  QString host = QString::fromLocal8Bit( chost ); //local hostname
   //Output format: <name>:::<address>::::<port>
   QStringList out;
   QStringList netout = LPBackend::getCmdOutput("avahi-browse -art");
@@ -290,7 +304,7 @@ QStringList LPGUtils::scanNetworkSSH(){
 	else if(var == "port"){ port = val; }
       }
       //Check that it is an SSH connection that is open (port 22)
-      if(port == "22"){ 
+      if(name!=host){
 	 out << name+":::"+address+":::"+port;
       }
     }

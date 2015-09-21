@@ -22,7 +22,7 @@ Installer::Installer(QWidget *parent) : QMainWindow(parent, Qt::Window | Qt::Fra
 	
     //Now start loading the rest of the interface
     labelVersion->setText(tr("Version:") + " " + PCBSDVERSION);
-    translator = new QTranslator();
+    //translator = new QTranslator();
     haveWarnedSpace=false;
     force4K = false;
     defaultInstall = true;
@@ -38,6 +38,7 @@ Installer::Installer(QWidget *parent) : QMainWindow(parent, Qt::Window | Qt::Fra
     connect(pushChangeKeyLayout, SIGNAL(clicked()), this, SLOT(slotPushKeyLayout()));
     connect(pushHardware, SIGNAL(clicked()), this, SLOT(slotCheckHardware()));
     connect(pushNetwork, SIGNAL(clicked()), this, SLOT(slotStartNetworkManager()));
+    connect(pushDiskManager, SIGNAL(clicked()), this, SLOT(slotStartDiskManager()));
     connect(pushLoadConfig, SIGNAL(clicked()), this, SLOT(slotLoadConfigUSB()));
     connect(pushSaveConfig, SIGNAL(clicked()), this, SLOT(slotSaveConfigUSB()));
     connect(pushSaveConfig2, SIGNAL(clicked()), this, SLOT(slotSaveConfigUSB()));
@@ -50,7 +51,7 @@ Installer::Installer(QWidget *parent) : QMainWindow(parent, Qt::Window | Qt::Fra
     bootLoader = QString("GRUB");
 
     // We use GPT by default now
-    loadGPT = true;
+    sysPartType="GPT";
 
     // No optional components by default
     fPORTS=false;
@@ -67,8 +68,6 @@ Installer::Installer(QWidget *parent) : QMainWindow(parent, Qt::Window | Qt::Fra
     backButton->setVisible(false);
 
     // Update the status bar
-    // This makes the status text more "visible" instead of using the blue background
-    statusBar()->setStyleSheet("background: white");
 
     // Check if we are running in EFI mode
     if ( system("kenv grub.platform | grep -q 'efi'") == 0 )
@@ -300,7 +299,7 @@ bool Installer::autoGenPartitionLayout(QString target, bool isDisk)
 
   // If over 1.99TB, we should use GPT mode
   if ( totalSize > 1999900 )
-    loadGPT=true;
+    sysPartType="GPT";
 
   // Add the main zfs pool with standard partitions
   fsType= "ZFS";
@@ -502,7 +501,7 @@ void Installer::slotDiskCustomizeClicked()
   wDisk->setWindowModality(Qt::ApplicationModal);
   if ( radioRestore->isChecked() )
     wDisk->setRestoreMode();
-  connect(wDisk, SIGNAL(saved(QList<QStringList>, QString, bool, QString, bool, QString)), this, SLOT(slotSaveDiskChanges(QList<QStringList>, QString, bool, QString, bool, QString)));
+  connect(wDisk, SIGNAL(saved(QList<QStringList>, QString, QString, QString, bool, QString)), this, SLOT(slotSaveDiskChanges(QList<QStringList>, QString, QString, QString, bool, QString)));
   wDisk->show();
   wDisk->raise();
 }
@@ -532,7 +531,7 @@ void Installer::slotSaveMetaChanges(QStringList sPkgs)
   textDeskSummary->setText(tr("The following meta-pkgs will be installed:") + "<br>" + selectedPkgs.join("<br>"));
 }
 
-void Installer::slotSaveDiskChanges(QList<QStringList> newSysDisks, QString BL, bool GPT, QString zName, bool zForce, QString biosMode )
+void Installer::slotSaveDiskChanges(QList<QStringList> newSysDisks, QString BL, QString partType, QString zName, bool zForce, QString biosMode )
 {
 
   bootLoader=BL;
@@ -548,7 +547,7 @@ void Installer::slotSaveDiskChanges(QList<QStringList> newSysDisks, QString BL, 
     efiMode=false;
 
   // Save the new disk layout
-  loadGPT = GPT;
+  sysPartType=partType;
   sysFinalDiskLayout = newSysDisks;
   textEditDiskSummary->clear();
   QStringList summary = getDiskSummary();
@@ -731,6 +730,10 @@ void Installer::slotNext()
       startConfigGen();
       QString msg;
 
+      // Check for any space warnings
+      if ( ! haveWarnedSpace )
+        checkSpaceWarning();
+
       if (radioRestore->isChecked() )
 	msg=tr("Start the restore now?");
       else
@@ -774,11 +777,15 @@ void Installer::slotAbort()
 
 void Installer::slotChangeLanguage()
 {
-    if ( comboLanguage->currentIndex() == -1 )
-      return;
+    static QTranslator *translator = 0;
+    //if ( comboLanguage->currentIndex() == -1 && translator!=0)
+      //return;
 
     // Figure out the language code
-    QString langCode = languages.at(comboLanguage->currentIndex());
+    QString langCode = "en_US";
+    if(comboLanguage->currentIndex() != -1){ 
+      langCode = languages.at(comboLanguage->currentIndex());
+    }
     
     // Grab the language code
     langCode.truncate(langCode.lastIndexOf(")"));
@@ -793,15 +800,16 @@ void Installer::slotChangeLanguage()
 
     //QTranslator *translator = new QTranslator();
     qDebug() << "Remove the translator";
-    if ( ! translator->isEmpty() )
+    if ( translator!=0 && ! translator->isEmpty() )
       QCoreApplication::removeTranslator(translator);
 
+    if(translator==0){ translator = new QTranslator(); }
     if (translator->load( QString("SysInstaller_") + langCode, appDir + "/i18n/" )) {
       qDebug() << "Load new Translator" << langCode;
       QCoreApplication::installTranslator(translator);
-      this->retranslateUi(this);
     }
-
+    this->retranslateUi(this); //For en_US - there is no translation file
+    
     // Change the default keyboard layout
     if ( langCode == "en" ) {
        curKeyModel="pc104";
@@ -817,6 +825,8 @@ void Installer::slotChangeLanguage()
        Scripts::Backend::changeKbMap("pc105", langCode, "" );
     }
     
+    // Reset the version label
+    labelVersion->setText(tr("Version:") + " " + PCBSDVERSION);
 }
 
 QStringList Installer::getGlobalCfgSettings()
@@ -953,9 +963,16 @@ QStringList Installer::getGlobalCfgSettings()
   }
 
 
-  // Doing install from /dist directory
-  tmpList << "installMedium=local"; 
-  tmpList << "localPath=/dist";
+  if ( QFile::exists("/pcbsd-media-network") )  
+  {
+    // Doing install from network media
+    tmpList << "installMedium=ftp"; 
+    tmpList << "ftpPath=http://download.pcbsd.org/iso/%VERSION%/%ARCH%/dist";
+  } else {
+    // Doing install from /dist directory
+    tmpList << "installMedium=local"; 
+    tmpList << "localPath=/dist";
+  }
 
   if ( comboLanguage->currentIndex() != 0 ) {
     QString lang = languages.at(comboLanguage->currentIndex());
@@ -995,9 +1012,6 @@ QStringList Installer::getGlobalCfgSettings()
 
 void Installer::startConfigGen()
 {
-
-  if ( ! haveWarnedSpace )
-     checkSpaceWarning();
 
   QStringList cfgList;
 
@@ -1170,7 +1184,7 @@ QStringList Installer::getDiskCfgSettings()
 
     if ( tmpSlice.at(0).isNumber() ) {
       // If we are installing to a GPT partition, mark it as such
-      loadGPT=true;
+      sysPartType="GPT";
       tmpList << "partition=p" + tmpSlice;
     } else {
       tmpList << "partition=" + tmpSlice;
@@ -1180,9 +1194,9 @@ QStringList Installer::getDiskCfgSettings()
     tmpList << "bootManager=" + bootLoader;
 
     // Set the GPT/MBR options
-    if ( loadGPT ) 
+    if ( sysPartType == "GPT" ) 
       tmpList << "partscheme=GPT";
-    else
+    if ( sysPartType == "MBR" )
       tmpList << "partscheme=MBR";
 
     tmpList << "commitDiskPart";
@@ -1613,9 +1627,8 @@ void Installer::slotReadInstallerOutput()
 	   continue;
         }
 
-	// If we are installing a package, show details to user
-	if ( tmp.indexOf("Installing") == 0 )
-          labelInstallStatus2->setText(tmp.section("...", 0, 0));
+	// Show other pkgng output text now
+        labelInstallStatus2->setText(tmp);
      }
 
   } // end of while loop
@@ -1729,15 +1742,13 @@ void Installer::checkSpaceWarning()
   QString target;
   //qDebug() << "Disk layout:" << workingDisk << workingSlice;
 
-  if ( workingSlice == "ALL" ) {
-    targetType = "DRIVE";
-    target = workingDisk;
-    targetLoc = 1;
-  } else {
-    targetType = "SLICE";
-    target = workingDisk + workingSlice;
-    targetLoc = 2;
-  }
+  // Only check full-disk sizes. Other size checks are done in disk wizard
+  if ( workingSlice != "ALL" )
+    return;
+
+  targetType = "DRIVE";
+  target = workingDisk;
+  targetLoc = 1;
   
   // Lets get the size for this disk / partition
   for (int i=0; i < sysDisks.count(); ++i) {
@@ -1875,8 +1886,31 @@ void Installer::slotLoadConfigUSB()
   bool ok;
   QString cfgFile = QInputDialog::getItem(this, tr("PC-BSD Installer"),
                                        tr("Config File:"), cfgs, 0, false, &ok);
-  if (!ok || cfgFile.isEmpty())
+  if (!ok || cfgFile.isEmpty()) {
+    QMessageBox::critical(this, tr("PC-BSD Installer"),
+          tr("Canceled config script install"),
+          QMessageBox::Ok,
+          QMessageBox::Ok);
     return;
+  }
+
+  // Read the contents of this file
+  QStringList fileContents;
+  QFile file("/tmp/pc-sys/" + cfgFile);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    QMessageBox::critical(this, tr("PC-BSD Installer"),
+          tr("Failed reading /tmp/pc-sys/") + " " + cfgFile,
+          QMessageBox::Ok,
+          QMessageBox::Ok);
+    return;
+  }
+
+  while (!file.atEnd())
+    fileContents << file.readLine();
+  file.close();
+
+  // Display the file in an OK information box so the user can inspect it
+  QMessageBox::information(this, tr("PC-BSD Installer Config Script"), fileContents.join("\n"), QMessageBox::Ok, QMessageBox::Ok);
   
   ret = QMessageBox::question(this, tr("PC-BSD Installer"),
            tr("Start the install using this config file?") + "\n" + cfgFile,
@@ -1900,6 +1934,11 @@ void Installer::slotLoadConfigUSB()
 void Installer::slotStartNetworkManager() 
 {
   system("/usr/local/bin/pc-netmanager -installer &");
+}
+
+void Installer::slotStartDiskManager() 
+{
+  system("/usr/local/bin/pc-zmanager &");
 }
 
 void Installer::slotSaveRestoreSettings(QStringList Opts)

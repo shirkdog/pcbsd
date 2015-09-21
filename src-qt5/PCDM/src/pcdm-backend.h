@@ -36,7 +36,7 @@ public:
     static QString getNLDesktopName(QString);
     static QString getDesktopIcon(QString);
     static QString getDesktopBinary(QString);
-    static void allowUidUnder1K(bool allow);
+    static void allowUidUnder1K(bool allow, QStringList excludes = QStringList() );
     static QStringList getSystemUsers(bool realnames = true);
     static QString getUsernameFromDisplayname(QString);
     static QString getDisplayNameFromUsername(QString);
@@ -74,7 +74,7 @@ public:
 private:	
     static void loadXSessionsData();
     static QStringList readXSessionsFile(QString, QString);
-    static void readSystemUsers();
+    static void readSystemUsers(bool directfile = false);
     static void readSystemLastLogin();
     static void writeSystemLastLogin(QString, QString);
     static QString readUserLastDesktop(QString);

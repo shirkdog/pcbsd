@@ -36,12 +36,13 @@ public slots:
 private:
 	QHash<QString,QString> *HASH;
 	QProcess *longProc;
-	bool stopping;
+	bool stopping, applianceMode;
 
 	//System Command functions 
 	QStringList sysCmd(QString cmd); // ensures only 1 running at a time (for things like pkg)
 	QStringList directSysCmd(QString cmd); //run command immediately
 	QStringList readFile(QString filepath); //read the contents of a text file
+	void UpdatePkgDB(QString jail);
 
 	//Internal Hash maintenance functions
 	void clearRepo(QString repo);
@@ -91,7 +92,7 @@ public:
 
 	void shutDown();
 
-	QString fetchInfo(QStringList request);
+	QString fetchInfo(QStringList request, bool noncli = false);
 	//Request Format: [<type>, <cmd1>, <cmd2>, .... ]
 
 	void writeToLog(QString message);
@@ -114,6 +115,7 @@ private:
 	
 	//Simplification routine for fetching general application info (faster than multiple calls)
 	QStringList FetchAppSummaries(QStringList pkgs, QString jail);
+	QStringList FetchCageSummaries(QStringList pkgs);
 
 	//Internal pause/syncing functions
 	void validateHash(QString key);

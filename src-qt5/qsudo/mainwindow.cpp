@@ -32,6 +32,16 @@ void MainWindow::ProgramInit()
                                 QMessageBox::Ok);
     exit(1);
   }
+
+  // Grab our arguments
+  args = qApp->arguments();
+  if(args.length()>1){ args.removeAt(0); } //remove the "qsudo" line
+  QString commText = args.join(" ");
+
+  // Check if we can bypass the GUI and use saved creds
+  if ( checkSudoCache() )
+     return;
+
   tries=3;
   connect(buttonBox, SIGNAL(clicked(QAbstractButton *)), this, SLOT(slotButtonClicked(QAbstractButton *)));
   connect(passwordLineEdit, SIGNAL(returnPressed()), this, SLOT(slotReturnPressed()));
@@ -44,9 +54,6 @@ void MainWindow::ProgramInit()
 
   // Set command text
   commandLabel->setVisible(false);
-  args = qApp->arguments();
-  if(args.length()>1){ args.removeAt(0); } //remove the "qsudo" line
-  QString commText = args.join(" ");
   commandLabel->setText(commText);
   //Initialize the settings file for this user
   settings = new QSettings("PCBSD", "qsudo");
@@ -187,13 +194,20 @@ bool MainWindow::checkUserGroup()
    QStringList gNames;
    if ( loginName == "root" )
      return true;
-    
-   QString tmp;
+   
+   QStringList info = runQuickCmd("getent group").filter(groupName); //need to support AD/LDAP settings
+   /*QString tmp;
    QFile iFile("/etc/group");
    if ( ! iFile.open(QIODevice::ReadOnly | QIODevice::Text))
-     return true; //or FALSE?
+     return true; //or FALSE?*/
  
-   while ( !iFile.atEnd() ) {
+   for(int i=0; i<info.length(); i++){
+     if(info[i].section(":",0,0)==groupName){
+       gNames = info[i].section(":",3,3).split(",");
+       break;
+     }	     
+   }
+   /*while ( !iFile.atEnd() ) {
      tmp = iFile.readLine().simplified();
      if ( tmp.indexOf(groupName) == 0 ) {
         gNames = tmp.section(":", 3, 3).split(",");
@@ -203,12 +217,13 @@ bool MainWindow::checkUserGroup()
    iFile.close();
 
    if ( gNames.isEmpty() )
-      return false;
+      return false;*/
 
-   for ( int i = 0; i < gNames.size(); ++i )
-      if ( gNames.at(i).indexOf(loginName) == 0 )
-            return true;
-
+   for ( int i = 0; i < gNames.size(); ++i ){
+      if ( gNames.at(i) == loginName ){
+	return true;
+      }
+   }
    return false;
 }
 
@@ -226,4 +241,26 @@ QStringList MainWindow::runQuickCmd(QString cmd){
    QString tmp = p.readAllStandardOutput();
    return tmp.split("\n", QString::SkipEmptyParts);	   
 }
-   
+
+bool MainWindow::checkSudoCache(){
+  int check = QProcess::execute("sudo", QStringList() << "-n" << "-v" );
+  if ( check != 0 )
+     return false;
+
+  // We have a cached credential! Lets bypass the entire GUI
+  setVisible(false);
+  QString program = "sudo";
+  QStringList arguments;
+  arguments << args; //saved input arguments
+
+  sudoProc = new QProcess(this);
+  sudoProc->start(program, arguments);
+  connect( sudoProc, SIGNAL(finished(int, QProcess::ExitStatus)), this, SLOT(slotProcDone() ) );
+  connect( sudoProc, SIGNAL(readyReadStandardError()), this, SLOT(slotPrintStdErr() ) );
+  connect( sudoProc, SIGNAL(readyReadStandardOutput()), this, SLOT(slotPrintStdOut() ) );
+  while(sudoProc->state() == QProcess::Starting ) {
+     sudoProc->waitForFinished(500);
+     QCoreApplication::processEvents();
+  }
+  return true;
+}

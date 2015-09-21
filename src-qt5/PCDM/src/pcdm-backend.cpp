@@ -9,12 +9,13 @@
 #include <QTemporaryFile>
 #include <QTextStream>
 #include <QDebug>
+#include <QStringList>
 
 #include "pcdm-backend.h"
 #include "pcdm-config.h"
 #include "pcbsd-utils.h"
 
-QStringList displaynameList,usernameList,homedirList,usershellList,instXNameList,instXBinList,instXCommentList,instXIconList,instXDEList;
+QStringList displaynameList,usernameList,homedirList,usershellList,instXNameList,instXBinList,instXCommentList,instXIconList,instXDEList,excludedUsers;
 QString logFile;
 QString saveX,saveUsername, lastUser, lastDE;
 bool Over1K = true;
@@ -54,11 +55,13 @@ QString Backend::getDesktopBinary(QString xName){
   return instXBinList[index];
 }
 
-void Backend::allowUidUnder1K(bool allow){
+void Backend::allowUidUnder1K(bool allow, QStringList excludes){
   Over1K = !allow;
-  //Make sure to re0load the user list if necessary
+  excludedUsers = excludes;
+  //Make sure to re-load the user list if necessary
   readSystemUsers();
 }
+
 
 QStringList Backend::getSystemUsers(bool realnames){
   if(usernameList.isEmpty()){
@@ -518,7 +521,9 @@ QStringList Backend::readXSessionsFile(QString filePath, QString locale){
   if(lname.isEmpty()){ lname = name; }
   if(lcomm.isEmpty()){ lcomm = comm; }
   //Make sure that we have a name/exec for the session, otherwise invalid file
-  if(lname.isEmpty() || exec.isEmpty() || tryexec.isEmpty()){ return output; }
+  if(lname.isEmpty() || exec.isEmpty() ){ return output; }
+  //If no tryexec given, check for the first binary given on the Exec line
+  if(tryexec.isEmpty()){ tryexec = exec.section(" ",0,0,QString::SectionSkipEmpty).simplified(); }
   //Check that there is an icon given
   if(icon.isEmpty()){
     //Try to use a built in icon if a known DE
@@ -536,46 +541,62 @@ QStringList Backend::readXSessionsFile(QString filePath, QString locale){
 
 }
 
-void Backend::readSystemUsers(){
+void Backend::readSystemUsers(bool directfile){
   //make sure the lists are empty
   usernameList.clear(); displaynameList.clear(); homedirList.clear();
   QStringList uList;	
-  bool usepw = true; //for testing purposes
-  if(usepw){
-    //Use "getent" to get all possible users
-    QProcess p;
-    p.setProcessChannelMode(QProcess::MergedChannels);
-      QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-      //Make sure to set all the possible UTF-8 flags before reading users
-      env.insert("LANG", "en_US.UTF-8");
-      env.insert("LC_ALL", "en_US.UTF-8");
-      env.insert("MM_CHARSET","UTF-8");
-    p.setProcessEnvironment(env);
-    p.start("getent passwd");
-    while(p.state()==QProcess::Starting || p.state() == QProcess::Running){
-      p.waitForFinished(200);
-      QCoreApplication::processEvents();
+    if(directfile){
+      //This is a general fallback for reading the file directly in case something goes wrong with the getent case below
+      QFile file("/etc/passwd");
+      if(file.open(QIODevice::ReadOnly | QIODevice::Text)){
+        QTextStream in(&file);
+        while (!in.atEnd()){ uList << in.readLine().simplified(); }
+        file.close();
+      }
+    }else{
+      //Use "getent" to get all possible users (detects LDAP/AD users - preferred)
+      QProcess p;
+      p.setProcessChannelMode(QProcess::MergedChannels);
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        //Make sure to set all the possible UTF-8 flags before reading users
+        env.insert("LANG", "en_US.UTF-8");
+        env.insert("LC_ALL", "en_US.UTF-8");
+        env.insert("MM_CHARSET","UTF-8");
+      p.setProcessEnvironment(env);
+      p.start("getent passwd");
+      while(p.state()==QProcess::Starting || p.state() == QProcess::Running){
+        p.waitForFinished(200);
+        QCoreApplication::processEvents();
+      }
+      uList = QString::fromUtf8( p.readAllStandardOutput() ).split("\n");
     }
-    uList = QString( p.readAllStandardOutput() ).split("\n");
     
     //Remove all users that have:
    QStringList filter; filter << "server" << "daemon" << "database" << "system"<< "account"<<"pseudo";
+   //List any shells which are still valid - if not installed fall back on csh
+   QStringList validShells; validShells << "/usr/local/bin/zsh" << "/usr/local/bin/fish" << "/usr/local/bin/bash";
    for(int i=0; i<uList.length(); i++){
     bool bad = false;
+    bool fixshell = false;
     QString dispcheck = uList[i].section(":",4,4).toLower();
+    QString shell = uList[i].section(":",6,6);
+    //First see if the listed shell is broken, but valid
+    if(!QFile::exists(shell) && validShells.contains(shell)){ fixshell = true; }
     // Shell Checks
-    if(uList[i].section(":",6,6).contains("nologin") || uList[i].section(":",6,6).isEmpty() || !QFile::exists(uList[i].section(":",6,6)) ){bad=true;}
+    if(shell.contains("nologin") || shell.isEmpty() ){bad=true;}
+    else if( !QFile::exists(shell) && !fixshell ){ bad = true; }
     // User Home Dir
     else if(uList[i].section(":",5,5).contains("nonexistent") || uList[i].section(":",5,5).contains("/empty") || uList[i].section(":",5,5).isEmpty() ){bad=true;}
     // uid > 0
     else if(uList[i].section(":",2,2).toInt() < 1){bad=true;} //don't show the root user
     //Check that the name/description does not contain "server"
-    else if(uList[i].section(":",2,2).toInt() <= 1000){
-	if(Over1K){ bad = true;} //ignore anything under UID 1001
+    else if(uList[i].section(":",2,2).toInt() < 1000){
+	if(Over1K){ bad = true;} //ignore anything under UID 1000
 	else{
 	  //Apply the special <1000 filters
-	  for(int f=0;f<filter.length(); f++){
-	    if(dispcheck.contains(filter[f])){ bad = true; break;}
+	  if(excludedUsers.contains(uList[i].section(":",0,0))){ bad = true; }
+	  for(int f=0;f<filter.length() && !bad; f++){
+	    if(dispcheck.contains(filter[f])){ bad = true; }
           }
         }
     }
@@ -587,43 +608,15 @@ void Backend::readSystemUsers(){
       usernameList << uList[i].section(":",0,0).simplified();
       displaynameList << uList[i].section(":",4,4).simplified();
       homedirList << uList[i].section(":",5,5).simplified();
-      usershellList << uList[i].section(":",6,6).simplified();
+      if(fixshell){ usershellList << "/bin/csh"; }
+      else{ usershellList << uList[i].section(":",6,6).simplified(); }
     }
    } //end loop over uList
-  }else{ 
-    //Get all the users from the file "/etc/passwd"
-    QFile PWF("/etc/passwd");
-    if( PWF.open(QIODevice::ReadOnly | QIODevice::Text) ){
-      QTextStream in(&PWF);
-        in.setCodec( "UTF-8" );
-      while( !in.atEnd() ){
-        uList << QString( in.readLine() );
-      }
-      PWF.close();    
-    }
-  //Remove all users that have:
-  for(int i=0; i<uList.length(); i++){
-    bool bad = false;
-    // Shell Checks
-    if(uList[i].section(":",6,6).contains("nologin") || uList[i].section(":",6,6).isEmpty() || !QFile::exists(uList[i].section(":",6,6)) ){bad=true;}
-    // User Home Dir
-    else if(uList[i].section(":",5,5).contains("nonexistent") || uList[i].section(":",5,5).contains("/empty") || uList[i].section(":",5,5).isEmpty() ){bad=true;}
-    // uid > 0
-    else if(uList[i].section(":",2,2).toInt() < 1){bad=true;} //don't show the root user
-
-    //See if it failed any checks
-    if(bad){ uList.removeAt(i); i--; }
-    else{
-      //Add this user to the lists if it is good
-      usernameList << uList[i].section(":",0,0).simplified();
-      displaynameList << uList[i].section(":",4,4).simplified();
-      homedirList << uList[i].section(":",5,5).simplified();
-      usershellList << uList[i].section(":",6,6).simplified();
-    }
+  if(usernameList.isEmpty() && !directfile){
+    //We need to find a valid user somewhere - try to directly read the file instead
+    qWarning() << "No users found with \"getent passwd\", reading the database directly...";
+    readSystemUsers(true);
   }
-  
-  }
-  
 }
 
 void Backend::readSystemLastLogin(){

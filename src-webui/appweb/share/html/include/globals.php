@@ -18,18 +18,9 @@
    // Probally shouldn't modify these below
    ///////////////////////////////////////////////////
 
-   // Figure out what page is being requested
-   $jail = "";
-   if ( ! empty($_GET['jail'])) {
-     if ( $_GET['jail'] == "__system__") {
-        $jail = "#system";
-        $jailUrl = "__system__";
-     } else {
-        $jail = $_GET['jail'];
-        $jailUrl = $_GET['jail'];
-     }
-
-   }
+   // Legacy stuff from old AppCafe 1.0 - Could be removed at some point
+   $jail = "#system";
+   $jailUrl = "__system__";
 
    // Set if we are viewing recommended or all PBI
    $allPBI = "false";
@@ -40,4 +31,19 @@
    $onDesktop = "false";
    if ( ! empty($_GET['AppCafeUI']))
      $onDesktop = $_GET['AppCafeUI'];
+
+   // Lets verify that the dispatcher ID is good
+   unset($vdisid);
+   $return_var=1;
+   putenv("PHP_DISID=$DISPATCHID");
+   exec("/usr/local/bin/sudo /usr/local/share/appcafe/dispatcher verify_disid", $output, $return_var);
+   if ( $return_var != 0 )
+   { 
+     if ( $login_on_fail ) {
+       include('include/login.php');
+       exit(0);
+     } else {
+       die("Invalid auth token!");
+     }
+   }
 ?>

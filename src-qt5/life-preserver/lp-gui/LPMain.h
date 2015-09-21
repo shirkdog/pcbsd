@@ -16,6 +16,7 @@
 #include <QFileDialog>
 #include <QFileSystemWatcher>
 #include <QSettings>
+#include <QThread>
 
 #include "LPBackend.h"
 #include "LPContainers.h"
@@ -24,6 +25,7 @@
 #include "LPConfig.h"
 #include "LPClassic.h"
 #include "LPISCSIWizard.h"
+#include "BackgroundWorker.h"
 
 namespace Ui{
 	class LPMain;
@@ -50,6 +52,11 @@ private:
 	QSettings *settings;
 	LPClassic *classicDLG;
 
+	QThread *WorkThread;
+	BackgroundWorker *WORKER;
+	QString cds; //internal/temporary variable for the current dataset (during a snapshot load)
+
+
 	void showErrorDialog(QString title, QString message, QString errors);
 	void showWaitBox(QString message);
 	void hideWaitBox();
@@ -58,6 +65,7 @@ private slots:
 	void updatePoolList();  //re-load available pools
 	void viewChanged();
 	void updateTabs();      //load current pool info and update tabs
+	void updateSnapshots(); //load the current snapshot info into the UI
 	void updateDataset();  //restore dataset changed
 	void updateSnapshot(); //selected snapshot changed
 	void nextSnapshot();
@@ -71,7 +79,7 @@ private slots:
 	void menuAddPool(QAction*);
 	void menuRemovePool(QAction*);
 	void menuSaveSSHKey();
-	void menuSetupISCSI(QAction*);
+	//void menuSetupISCSI(QAction*);
 	void menuCloseWindow();
 	//Classic Backups
 	void menuCompressHomeDir(QAction*);
@@ -88,8 +96,10 @@ private slots:
 	void menuRemoveSnapshot(QAction*);
 	void menuStartReplication(QAction*);
 	void menuInitReplication(QAction*);
+	void menuResetReplicationPassword(QAction*);
 
-protected:
+signals:
+	void loadSnaps(LPDataset*);
 	
 };
 
