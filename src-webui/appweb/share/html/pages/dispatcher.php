@@ -4,6 +4,8 @@ defined('DS') OR die('No direct access allowed.');
    $newpage="dispatcher";
    if ( $pluginDispatcher)
      $newpage="dispatcher-plugins";
+   if ( $jailDispatcher)
+     $newpage="dispatcher-jails";
 
    // Did the user request to start updates on a jail / system?
    if ( ! empty($_GET['updateTarget']) ) {
@@ -15,7 +17,8 @@ defined('DS') OR die('No direct access allowed.');
         $updateTargetName="$updateTarget";
 
       // Queue it up now
-      run_cmd("pkgupdate $updateTarget");
+      $dccmd = array("pkgupdate $updateTarget");
+      send_dc_cmd($dccmd);
 
       // Now we can remove those values from the URL
       $newUrl=http_build_query($_GET);
@@ -28,7 +31,9 @@ defined('DS') OR die('No direct access allowed.');
    // Did the user request log files?
    if ( ! empty($_GET['log']) )
    {
-      $logoutput=run_cmd("log ". $_GET['log']);
+      $dccmd = array("log ". $_GET['log']);
+      $response = send_dc_cmd($dccmd);
+      $logoutput = explode("\n", $response["log " . $_GET['log']]);
 
 ?>
 
@@ -87,14 +92,17 @@ defined('DS') OR die('No direct access allowed.');
 
 
        unset($jarray);
-       exec("$sc ". escapeshellarg("pkg ". $jname . " hasupdates"), $jarray);
-       $hasupdates=$jarray[0];
+       $sccmd = array("pkg $jname hasupdates");
+       $response = send_sc_query($sccmd);
+       $hasupdates = $response["pkg $jname hasupdates"];
 
        if ( $hasupdates == "true" ) {
           $pkgUpdates=true;
           // Get the list of updates to show user
           unset($jarray);
-          exec("$sc ". escapeshellarg("pkg ". $jname . " updatemessage"), $jarray);
+          $sccmd = array("pkg $jname updatemessage");
+          $response = send_sc_query($sccmd);
+          $upmsg = $response["pkg $jname updatemessage"];
 
           echo "<div class=\"popbox\">\n";
           echo "  <a href=\"/?p=$newpage&updateTarget=$targetUrl\" style=\"text-decoration: underline;\"><img src=\"/images/warning.png\" height=35 width=35 title=\"Updates available!\">Update packages for $target</a>";
@@ -104,7 +112,7 @@ defined('DS') OR die('No direct access allowed.');
           echo "      <div class=\"arrow\"></div>\n";
           echo "      <div class=\"arrow-border\"></div>\n";
 	  echo "        <p align=\"left\">\n";
-	  echo "        $jarray[0]</p>\n";
+	  echo "        $upmsg</p>\n";
 	  echo "        <a href=\"#\" class=\"close\">close</a>\n";
           echo "    </div>\n";
           echo "   </div>\n";
@@ -136,12 +144,16 @@ echo "<script type='text/javascript' charset='utf-8'>
 
 <?
 
-     $rarray = run_cmd("results");
+     $dccmd = array("results");
+     $response = send_dc_cmd($dccmd);
+     $rarray = explode("\n", $response["results"]);
 
      // Loop through the results
      $rarray = array_reverse($rarray);
      foreach ($rarray as $res) {
        $results = explode(" ", $res);
+       if ( empty($results[0]) )
+         continue;
        if ( $results[2] == "iocage" ) {
          echo "<tr><td>jail: $results[3]</td>";
          echo "<td>$results[4]</td>";
